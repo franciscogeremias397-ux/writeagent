@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: shenbi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: shenbi_agent
+    ports:
+      - "5432:5432"
+    volumes:
+      - shenbi_postgres:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: shenbi-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - shenbi_redis:/data
+
+volumes:
+  shenbi_postgres:
+  shenbi_redis:

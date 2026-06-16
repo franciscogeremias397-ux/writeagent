@@ -1,0 +1,236 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Work {
+  id                String      @id @default(cuid())
+  title             String
+  cover             String?
+  status            WorkStatus  @default(draft)
+  platform          String
+  platformUrl       String?
+  genreTags         String[]
+  styleTags         String[]
+  wordCount         Int         @default(0)
+  summary           String
+  fullText          String?
+  storyPlan         Json?
+  commentFeedback   String?
+  commentKeywords   String[]    @default([])
+  sourceLabel       String?
+  sourceDetail      String?
+  importedAt        DateTime?
+  readCount         Int         @default(0)
+  subscriptionCount Int         @default(0)
+  revenue           Decimal     @default(0)
+  completionRate    Float       @default(0)
+  sceneCards        SceneCard[]
+  marks             Mark[]
+  versions          WorkVersion[]
+  readerReports     ReaderReport[]
+  reviewReports     ReviewReport[]
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+}
+
+model SceneCard {
+  id                 String   @id @default(cuid())
+  workId             String
+  work               Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  index              Int
+  title              String
+  goal               String
+  protagonistWant    String
+  obstacle           String
+  conflictUpgrade    String
+  informationGap     String
+  emotion            String
+  keyAction          String
+  keyDialogue        String
+  hook               String
+  estimatedWords     Int
+  relatedCharacters  String[]
+  relatedForeshadows String[]
+}
+
+model Mark {
+  id           String   @id @default(cuid())
+  workId       String
+  work         Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  sceneCardId  String?
+  index        Int
+  selectedText String
+  comment      String?
+  type         MarkType
+  startOffset  Int
+  endOffset    Int
+  createdAt    DateTime @default(now())
+}
+
+model WorkVersion {
+  id           String   @id @default(cuid())
+  workId       String
+  work         Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  markId       String
+  markLabel    String
+  originalText String
+  newText      String
+  reason       String
+  impactNotes  String[]
+  createdAt    DateTime @default(now())
+}
+
+model Trend {
+  id              String   @id @default(cuid())
+  platform        String
+  genre           String
+  heat            Float
+  growthRate      Float
+  opportunityScore Float
+  saturationScore Float
+  reason          String
+  tags            String[]
+  sourceLabel     String?
+  sourceDetail    String?
+  createdAt       DateTime @default(now())
+}
+
+model DataSource {
+  id          String       @id @default(cuid())
+  name        String
+  type        String
+  enabled     Boolean      @default(true)
+  frequency   String       @default("手动")
+  sourceDetail String?
+  note        String?
+  crawlerJobs CrawlerJob[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model CrawlerJob {
+  id            String      @id @default(cuid())
+  datasourceId  String?
+  datasource    DataSource? @relation(fields: [datasourceId], references: [id], onDelete: SetNull)
+  name          String
+  type          String
+  status        String
+  lastRunAt     DateTime?
+  successCount  Int         @default(0)
+  failureReason String?
+  sourceDetail  String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model ReaderReport {
+  id              String   @id @default(cuid())
+  workId          String
+  work            Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  openingScore    Int
+  empathyScore    Int
+  emotionScore    Int
+  reversalScore   Int
+  closureScore    Int
+  platformFitScore Int
+  samenessRisk    String
+  problems        String[]
+  suggestions     String[]
+  createdAt       DateTime @default(now())
+}
+
+model ReviewReport {
+  id                 String   @id @default(cuid())
+  workId             String
+  work               Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  readCount          Int?
+  revenue            Decimal?
+  completionRate     Float?
+  rankingChange      String?
+  recommendationChange String?
+  commentFeedback    String?
+  contentDiagnostics Json?
+  performanceSummary String
+  strengths          String[]
+  weaknesses         String[]
+  nextWritingAdvice  String[]
+  strategyLessons    String[]
+  createdAt          DateTime @default(now())
+}
+
+model WritingMemory {
+  id             String   @id @default(cuid())
+  sourceType     String
+  genre          String?
+  rule           String
+  positiveExample String?
+  negativeExample String?
+  confidence     Int
+  relatedWorkIds String[]
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model PersonalStrategy {
+  id             String   @id @default(cuid())
+  sourceType     String
+  genre          String
+  rule           String
+  evidence       String   @default("")
+  action         String   @default("")
+  confidence     Int
+  relatedWorkIds String[]
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model KnowledgeChunk {
+  id         String   @id @default(cuid())
+  sourceType String
+  sourceId   String
+  genre      String?
+  content    String
+  embedding  Float[]
+  embeddingVector Unsupported("vector")? @map("embeddingVector")
+  metadata   Json?
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([sourceType, sourceId])
+  @@index([sourceType, genre])
+}
+
+model AppSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  encrypted Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+}
+
+enum WorkStatus {
+  draft
+  published
+  serializing
+  finished
+}
+
+enum MarkType {
+  delete
+  optimize
+  rewrite
+  logic
+  emotion
+  rhythm
+  character
+  information_gap
+  scene_goal
+}

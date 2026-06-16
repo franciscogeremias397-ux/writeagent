@@ -1,0 +1,37 @@
+# dependencies
+node_modules/
+
+# build output
+.next/
+apps/web/.next/
+dist/
+apps/**/dist/
+packages/**/dist/
+*.tsbuildinfo
+coverage/
+
+# local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*secret*
+*Secret*
+*credential*
+*Credential*
+
+# local runtime data
+storage/
+workspace/works/
+logs/
+sessions/
+
+# OS and editor noise
+.DS_Store
+.vscode/
+.idea/

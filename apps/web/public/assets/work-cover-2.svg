@@ -1,0 +1,7 @@
+<svg width="360" height="520" viewBox="0 0 360 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="360" height="520" fill="#ECEBE6"/>
+  <rect x="44" y="54" width="272" height="412" rx="6" fill="#101010"/>
+  <circle cx="180" cy="218" r="78" stroke="#ECEBE6" stroke-width="2"/>
+  <path d="M128 228H232M180 166V298" stroke="#ECEBE6" stroke-width="2"/>
+  <text x="180" y="420" text-anchor="middle" font-family="serif" font-size="34" fill="#ECEBE6">雾灯之后</text>
+</svg>

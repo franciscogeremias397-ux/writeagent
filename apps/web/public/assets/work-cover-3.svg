@@ -1,0 +1,7 @@
+<svg width="360" height="520" viewBox="0 0 360 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="360" height="520" fill="#FAF8EF"/>
+  <rect x="46" y="52" width="268" height="416" rx="4" stroke="#111111" stroke-width="2"/>
+  <path d="M96 320C119 266 147 240 180 240C213 240 241 266 264 320" stroke="#111111" stroke-width="7" stroke-linecap="round"/>
+  <path d="M128 226H232" stroke="#111111" stroke-width="7" stroke-linecap="round"/>
+  <text x="180" y="411" text-anchor="middle" font-family="serif" font-size="30" fill="#111111">月亮照进早餐店</text>
+</svg>
