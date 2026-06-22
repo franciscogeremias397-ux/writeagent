@@ -35,11 +35,15 @@ export function MemoryPage() {
 
 export function SettingsPage() {
   return (
-    <PageFrame eyebrow="设置中心" title="管理本地配置、隐私和备份">
-      <section className="grid gap-5 xl:grid-cols-2">
-        <AiSettingsPanel />
-        <RuntimeSettingsPanel />
-      </section>
+    <PageFrame eyebrow="设置中心" title="先接模型，再检查本地运行">
+      <AiSettingsPanel />
+
+      <details>
+        <summary className="cursor-pointer rounded-lg border border-line bg-white px-5 py-4 text-base font-semibold text-ink">本地运行诊断</summary>
+        <div className="mt-5">
+          <RuntimeSettingsPanel />
+        </div>
+      </details>
 
       <section className="grid gap-5 xl:grid-cols-2">
         <Card>

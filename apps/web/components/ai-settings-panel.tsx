@@ -5,13 +5,47 @@ import { CheckCircle2, KeyRound, PlugZap, Save, Sparkles, Trash2 } from "lucide-
 import { Button, Card, CardHeader, FieldLabel, GhostButton, SelectInput, TextInput } from "@/components/ui";
 import { getSettings, saveAiSettings, testAiConnection, testAiKernel, type AiKernelTestResult, type AiSettingsStatus } from "@/lib/api";
 
+const fallbackProviders: AiSettingsStatus["availableAiProviders"] = [
+  {
+    id: "kimi",
+    label: "Kimi",
+    defaultTextModel: "kimi-k2.6",
+    defaultBaseUrl: "https://api.moonshot.ai/v1",
+    apiKeyEnv: "MOONSHOT_API_KEY",
+    textModelEnv: "KIMI_TEXT_MODEL",
+    baseUrlEnv: "KIMI_BASE_URL",
+    supportsVision: true
+  },
+  {
+    id: "deepseek",
+    label: "DeepSeek",
+    defaultTextModel: "deepseek-v4-flash",
+    defaultBaseUrl: "https://api.deepseek.com",
+    apiKeyEnv: "DEEPSEEK_API_KEY",
+    textModelEnv: "DEEPSEEK_TEXT_MODEL",
+    baseUrlEnv: "DEEPSEEK_BASE_URL",
+    supportsVision: false
+  },
+  {
+    id: "openai",
+    label: "OpenAI",
+    defaultTextModel: "gpt-5.2",
+    defaultBaseUrl: "https://api.openai.com/v1",
+    apiKeyEnv: "OPENAI_API_KEY",
+    textModelEnv: "OPENAI_TEXT_MODEL",
+    baseUrlEnv: "OPENAI_BASE_URL",
+    supportsVision: true
+  }
+];
+
 export function AiSettingsPanel() {
   const [settings, setSettings] = useState<AiSettingsStatus | null>(null);
   const [message, setMessage] = useState("正在读取本地 AI 设置。");
-  const [aiProvider, setAiProvider] = useState("openai");
-  const [openAiTextModel, setOpenAiTextModel] = useState("gpt-5.2");
+  const [aiProvider, setAiProvider] = useState<"openai" | "kimi" | "deepseek">("kimi");
+  const [textModel, setTextModel] = useState("kimi-k2.6");
+  const [baseUrl, setBaseUrl] = useState("https://api.moonshot.ai/v1");
   const [openAiEmbeddingModel, setOpenAiEmbeddingModel] = useState("text-embedding-3-small");
-  const [openAiApiKey, setOpenAiApiKey] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [isTesting, setIsTesting] = useState(false);
   const [isTestingKernel, setIsTestingKernel] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -23,8 +57,10 @@ export function AiSettingsPanel() {
     getSettings()
       .then((result) => {
         setSettings(result);
-        setAiProvider(result.aiStatus.provider);
-        setOpenAiTextModel(result.aiStatus.model);
+        const provider = normalizeProviderId(result.aiStatus.provider);
+        setAiProvider(provider);
+        setTextModel(result.aiStatus.model);
+        setBaseUrl(result.aiStatus.baseUrl);
         setOpenAiEmbeddingModel(result.aiStatus.embeddingModel);
         setMessage(result.aiStatus.message);
       })
@@ -32,6 +68,22 @@ export function AiSettingsPanel() {
         setMessage(error instanceof Error ? error.message : "读取设置失败。");
       });
   }, []);
+
+  const providerOptions = settings?.availableAiProviders?.length ? settings.availableAiProviders : fallbackProviders;
+  const selectedProvider = providerOptions.find((provider) => provider.id === aiProvider) ?? providerOptions[0];
+  const realMode = settings?.aiStatus.mode && settings.aiStatus.mode !== "mock";
+
+  function handleProviderChange(value: string) {
+    const nextProvider = normalizeProviderId(value);
+    const meta = providerOptions.find((provider) => provider.id === nextProvider) ?? fallbackProviders.find((provider) => provider.id === nextProvider) ?? fallbackProviders[0];
+
+    setAiProvider(nextProvider);
+    setTextModel(meta.defaultTextModel);
+    setBaseUrl(meta.defaultBaseUrl);
+    setApiKey("");
+    setConfirmClearKey(false);
+    setMessage(`已切换到 ${meta.label}，保存后生效。`);
+  }
 
   async function handleTest() {
     setIsTesting(true);
@@ -71,9 +123,10 @@ export function AiSettingsPanel() {
     try {
       const result = await saveAiSettings({
         aiProvider,
-        openAiTextModel,
+        textModel,
+        baseUrl,
         openAiEmbeddingModel,
-        openAiApiKey: openAiApiKey.trim() || undefined
+        apiKey: apiKey.trim() || undefined
       });
 
       setSettings((current) =>
@@ -86,7 +139,9 @@ export function AiSettingsPanel() {
             }
           : current
       );
-      setOpenAiApiKey("");
+      setTextModel(result.aiStatus.model);
+      setBaseUrl(result.aiStatus.baseUrl);
+      setApiKey("");
       setMessage(result.message);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "保存 AI 设置失败。");
@@ -108,9 +163,10 @@ export function AiSettingsPanel() {
     try {
       const result = await saveAiSettings({
         aiProvider,
-        openAiTextModel,
+        textModel,
+        baseUrl,
         openAiEmbeddingModel,
-        clearOpenAiApiKey: true
+        clearApiKey: true
       });
 
       setSettings((current) =>
@@ -123,7 +179,7 @@ export function AiSettingsPanel() {
             }
           : current
       );
-      setOpenAiApiKey("");
+      setApiKey("");
       setMessage(result.message);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "清除 API Key 失败。");
@@ -140,48 +196,63 @@ export function AiSettingsPanel() {
         <div className="grid gap-3 rounded-md border border-line bg-white p-4">
           <div className="flex items-center gap-3">
             <PlugZap size={18} />
-            <span className="font-medium">{settings?.aiStatus.mode === "openai" ? "真实 AI 模式" : "模拟内核模式"}</span>
+            <span className="font-medium">{realMode ? `${settings?.aiStatus.providerLabel ?? selectedProvider.label} 真实模式` : "本地模拟模式"}</span>
           </div>
           <p className="text-sm leading-6 text-muted">{message}</p>
         </div>
         <div className="grid gap-3 rounded-md border border-line bg-white p-4 md:grid-cols-4">
-          <Info label="Provider" value={settings?.aiStatus.provider ?? "openai"} />
-          <Info label="写作模型" value={settings?.aiStatus.model ?? "gpt-5.2"} />
-          <Info label="Embedding 模型" value={settings?.aiStatus.embeddingModel ?? "text-embedding-3-small"} />
+          <Info label="供应商" value={settings?.aiStatus.providerLabel ?? selectedProvider.label} />
+          <Info label="写作模型" value={settings?.aiStatus.model ?? selectedProvider.defaultTextModel} />
+          <Info label="Key 名称" value={settings?.aiStatus.apiKeyEnv ?? selectedProvider.apiKeyEnv} />
           <Info label="API Key" value={settings?.hasApiKey ? "已配置" : "未配置"} />
         </div>
         <div className="grid gap-3 rounded-md border border-line bg-white p-4">
           <div className="grid gap-3 md:grid-cols-[160px_1fr]">
             <FieldLabel>供应商</FieldLabel>
-            <SelectInput value={aiProvider} onChange={(event) => setAiProvider(event.target.value)}>
-              <option value="openai">OpenAI</option>
+            <SelectInput value={aiProvider} onChange={(event) => handleProviderChange(event.target.value)}>
+              {providerOptions.map((provider) => (
+                <option key={provider.id} value={provider.id}>
+                  {provider.label}{provider.id === "kimi" ? "（推荐写正文）" : provider.id === "deepseek" ? "（推荐做规划）" : ""}
+                </option>
+              ))}
             </SelectInput>
           </div>
           <div className="grid gap-3 md:grid-cols-[160px_1fr]">
             <FieldLabel>写作模型</FieldLabel>
-            <TextInput value={openAiTextModel} onChange={(event) => setOpenAiTextModel(event.target.value)} placeholder="gpt-5.2" />
-          </div>
-          <div className="grid gap-3 md:grid-cols-[160px_1fr]">
-            <FieldLabel>Embedding 模型</FieldLabel>
-            <TextInput
-              value={openAiEmbeddingModel}
-              onChange={(event) => setOpenAiEmbeddingModel(event.target.value)}
-              placeholder="text-embedding-3-small"
-            />
+            <TextInput value={textModel} onChange={(event) => setTextModel(event.target.value)} placeholder={selectedProvider.defaultTextModel} />
           </div>
           <div className="grid gap-3 md:grid-cols-[160px_1fr]">
             <FieldLabel>API Key</FieldLabel>
             <div className="grid gap-2">
               <TextInput
-                value={openAiApiKey}
-                onChange={(event) => setOpenAiApiKey(event.target.value)}
-                placeholder={settings?.hasApiKey ? "已配置；留空则不改" : "粘贴你的 OpenAI API Key"}
+                value={apiKey}
+                onChange={(event) => setApiKey(event.target.value)}
+                placeholder={settings?.hasApiKey && settings.aiStatus.provider === aiProvider ? "已配置；留空则不改" : `粘贴你的 ${selectedProvider.apiKeyEnv}`}
                 type="password"
                 autoComplete="off"
               />
-              <p className="text-xs leading-5 text-muted">保存后只写入本机配置文件，备份文件不会包含 Key 原文。</p>
+              <p className="text-xs leading-5 text-muted">保存后只写入本机配置文件；不会提交到 Git，也不会出现在备份里。</p>
             </div>
           </div>
+          <details className="rounded-md border border-line bg-paper p-3">
+            <summary className="cursor-pointer text-sm font-medium text-ink">高级连接设置</summary>
+            <div className="mt-3 grid gap-3">
+              <div className="grid gap-2 md:grid-cols-[160px_1fr]">
+                <FieldLabel>Base URL</FieldLabel>
+                <TextInput value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder={selectedProvider.defaultBaseUrl} />
+              </div>
+              {aiProvider === "openai" ? (
+                <div className="grid gap-2 md:grid-cols-[160px_1fr]">
+                  <FieldLabel>Embedding 模型</FieldLabel>
+                  <TextInput
+                    value={openAiEmbeddingModel}
+                    onChange={(event) => setOpenAiEmbeddingModel(event.target.value)}
+                    placeholder="text-embedding-3-small"
+                  />
+                </div>
+              ) : null}
+            </div>
+          </details>
         </div>
         <div className="flex flex-wrap gap-3">
           <Button onClick={handleSave} disabled={isSaving}>
@@ -234,8 +305,16 @@ function Info({ label, value }: { label: string; value: string }) {
 }
 
 function providerModeLabel(mode: AiKernelTestResult["providerMode"]) {
+  if (mode === "kimi") {
+    return "Kimi";
+  }
+
+  if (mode === "deepseek") {
+    return "DeepSeek";
+  }
+
   if (mode === "openai") {
-    return "真实 AI";
+    return "OpenAI";
   }
 
   if (mode === "fallback") {
@@ -243,4 +322,12 @@ function providerModeLabel(mode: AiKernelTestResult["providerMode"]) {
   }
 
   return "本地模拟";
+}
+
+function normalizeProviderId(value: string): "openai" | "kimi" | "deepseek" {
+  if (value === "kimi" || value === "deepseek" || value === "openai") {
+    return value;
+  }
+
+  return "kimi";
 }

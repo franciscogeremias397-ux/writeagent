@@ -1776,7 +1776,7 @@ export function generateStoryPlan(input: GeneratePlanInput = {}): StoryPlan {
     id: `plan-${Date.now()}`,
     title: selectedTopic.title,
     providerMode: "mock",
-    providerNotice: "当前使用本地模拟写作内核。配置 OPENAI_API_KEY 后，后端会优先尝试真实 AI。",
+    providerNotice: "当前使用本地模拟写作内核。配置 Kimi、DeepSeek 或 OpenAI API Key 后，后端会优先尝试真实 AI。",
     memoryUsed,
     learningBasis,
     source: base.inspiration,
@@ -1827,7 +1827,7 @@ export function rewriteMarkedText(markId: string, selectedText: string, feedback
   return {
     markId,
     providerMode: "mock",
-    providerNotice: "当前使用本地模拟改稿内核。配置 OPENAI_API_KEY 后，后端会优先尝试真实 AI。",
+    providerNotice: "当前使用本地模拟改稿内核。配置 Kimi、DeepSeek 或 OpenAI API Key 后，后端会优先尝试真实 AI。",
     understanding: `你希望这段不要只靠情绪爆炸，而是更真实、更克制地完成力量变化。反馈重点是：${cleanFeedback}`,
     strategy: "保留原段落的冲突方向，减少夸张台词，增加动作细节和沉默压力。",
     newText,
@@ -1857,7 +1857,7 @@ export function reviseSceneDraft(input: ReviseSceneDraftInput): SceneDraftRevisi
     ],
     revisionFocus: "下一轮重点检查：新增细节是否自然，是否仍然服务本场冲突升级。",
     providerMode: "mock",
-    providerNotice: "当前使用本地模拟单场重写内核。配置 OPENAI_API_KEY 后，后端会优先尝试真实 AI。",
+    providerNotice: "当前使用本地模拟单场重写内核。配置 Kimi、DeepSeek 或 OpenAI API Key 后，后端会优先尝试真实 AI。",
     changeNotes: [
       "保留原场景结构，没有影响其他场景。",
       "强化了动作细节和主角主动性。",

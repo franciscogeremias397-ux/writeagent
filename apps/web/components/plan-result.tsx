@@ -252,8 +252,8 @@ export function PlanResult({
             <p className="text-sm leading-7 text-muted">{viewPlan.topicJudgement}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               {viewPlan.providerMode ? (
-                <Badge className={viewPlan.providerMode === "openai" ? "border-ink text-ink" : undefined}>
-                  {viewPlan.providerMode === "openai" ? "真实 AI" : viewPlan.providerMode === "fallback" ? "已回退" : "模拟内核"}
+                <Badge className={viewPlan.providerMode !== "mock" && viewPlan.providerMode !== "fallback" ? "border-ink text-ink" : undefined}>
+                  {providerModeLabel(viewPlan.providerMode)}
                 </Badge>
               ) : null}
               {viewPlan.tags.map((tag) => (
@@ -732,6 +732,14 @@ export function PlanResult({
       ) : null}
     </div>
   );
+}
+
+function providerModeLabel(mode: NonNullable<StoryPlan["providerMode"]>) {
+  if (mode === "kimi") return "Kimi";
+  if (mode === "deepseek") return "DeepSeek";
+  if (mode === "openai") return "OpenAI";
+  if (mode === "fallback") return "已回退";
+  return "模拟内核";
 }
 
 function LearningBasisCard({ basis }: { basis: NonNullable<StoryPlan["learningBasis"]> }) {

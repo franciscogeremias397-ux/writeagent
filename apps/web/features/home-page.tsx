@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Feather, Lightbulb, RefreshCw, Sparkles } from "lucide-react";
+import { ArrowRight, Database, Feather, RefreshCw, Sparkles } from "lucide-react";
 import { todayIdea, todayIdeas, trends as fallbackTrends, works as fallbackWorks } from "@shenbi/shared";
 import { Badge, Button, Card, CardHeader, GhostButton, Progress } from "@/components/ui";
 import { getTrends, getWorks } from "@/lib/api";
@@ -83,18 +83,18 @@ export function HomePage() {
         <div className="grid gap-5 md:grid-cols-2">
           <Card className="p-6">
             <div className="mb-5 grid h-11 w-11 place-items-center rounded-md bg-ink text-white">
-              <Lightbulb size={20} />
+              <Feather size={20} />
             </div>
-            <h2 className="text-xl font-semibold">灵感写作</h2>
-            <p className="mt-3 min-h-16 text-sm leading-7 text-muted">从灵感到故事设定，AI 帮你打开高潜力开篇。</p>
+            <h2 className="text-xl font-semibold">开始一篇短篇</h2>
+            <p className="mt-3 min-h-16 text-sm leading-7 text-muted">输入一句方向，Agent 自动跑完选题、结构、分场正文和测试读者报告。</p>
             <div className="mt-4 flex flex-wrap gap-2">
-              {["灵感发散", "故事设定", "开篇生成", "人设卡片"].map((item) => (
+              {["一句话输入", "十步生成", "保存到编辑器", "复盘沉淀"].map((item) => (
                 <Badge key={item}>{item}</Badge>
               ))}
             </div>
-            <Link href="/inspiration" className="mt-6 inline-flex w-full">
+            <Link href="/auto" className="mt-6 inline-flex w-full">
               <Button className="w-full">
-                开始灵感写作
+                开始创作
                 <ArrowRight size={16} />
               </Button>
             </Link>
@@ -102,18 +102,18 @@ export function HomePage() {
 
           <Card className="p-6">
             <div className="mb-5 grid h-11 w-11 place-items-center rounded-md bg-ink text-white">
-              <Feather size={20} />
+              <Database size={20} />
             </div>
-            <h2 className="text-xl font-semibold">自动写作</h2>
-            <p className="mt-3 min-h-16 text-sm leading-7 text-muted">选择赛道、篇幅、风格，一键生成短篇草稿。</p>
+            <h2 className="text-xl font-semibold">导入学习素材</h2>
+            <p className="mt-3 min-h-16 text-sm leading-7 text-muted">把你授权可见的作品数据、评论和趋势导入，下一篇会优先参考。</p>
             <div className="mt-4 flex flex-wrap gap-2">
-              {["题材机会", "场景卡", "读者评审", "修订建议"].map((item) => (
+              {["授权可见页", "CSV", "截图校正", "写作记忆"].map((item) => (
                 <Badge key={item}>{item}</Badge>
               ))}
             </div>
-            <Link href="/auto" className="mt-6 inline-flex w-full">
+            <Link href="/sources" className="mt-6 inline-flex w-full">
               <Button className="w-full">
-                开始自动写作
+                导入素材
                 <ArrowRight size={16} />
               </Button>
             </Link>

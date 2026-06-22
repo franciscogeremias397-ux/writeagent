@@ -70,10 +70,12 @@ export class BackupsService {
       app: "神笔马良短篇小说 Agent",
       version: "0.1.0",
       createdAt: createdAt.toISOString(),
-      privacyNote: "此备份不包含 OPENAI_API_KEY 等密钥原文。",
+      privacyNote: "此备份不包含 MOONSHOT_API_KEY、DEEPSEEK_API_KEY、OPENAI_API_KEY 等密钥原文。",
       settings: {
         aiProvider: process.env.AI_PROVIDER ?? "openai",
         hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
+        hasKimiKey: Boolean(process.env.MOONSHOT_API_KEY),
+        hasDeepSeekKey: Boolean(process.env.DEEPSEEK_API_KEY),
         storageDir: process.env.LOCAL_STORAGE_DIR ?? "./storage",
         workspaceDir: process.env.WORKSPACE_DIR ?? "./workspace",
         logDir: process.env.LOG_DIR ?? "./logs"
@@ -1261,7 +1263,7 @@ const starterDatasources: DatasourceRecord[] = [
     type: "screenshot",
     enabled: false,
     frequency: "手动",
-    note: "有 OpenAI Key 时可自动识别截图文字，也支持手动校正文字。",
+    note: "有 Kimi/OpenAI Key 时可自动识别截图文字，也支持手动校正文字。",
     persisted: false,
     createdAt: "2026-06-07",
     updatedAt: "2026-06-07"

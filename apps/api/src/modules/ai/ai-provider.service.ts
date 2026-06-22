@@ -7,6 +7,7 @@ import {
   rewriteMarkedText,
   validateStoryWorkflow,
   type GeneratePlanInput,
+  type AiProviderMode,
   type ReviseSceneDraftInput,
   type SceneDraftRevision,
   type RewriteSuggestion,
@@ -52,6 +53,90 @@ type OpenAIRequest = {
   };
 };
 
+type ChatCompletionRequest = {
+  model: string;
+  messages: Array<{
+    role: "user" | "system";
+    content:
+      | string
+      | Array<
+          | {
+              type: "text";
+              text: string;
+            }
+          | {
+              type: "image_url";
+              image_url: {
+                url: string;
+                detail?: "low" | "high" | "auto";
+              };
+            }
+        >;
+  }>;
+  response_format?: {
+    type: "json_object";
+  };
+  temperature?: number;
+};
+
+type ChatCompletionResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string | Array<{ type?: string; text?: string }>;
+    };
+  }>;
+};
+
+type ProviderId = "openai" | "kimi" | "deepseek";
+
+type ProviderConfig = {
+  id: ProviderId;
+  label: string;
+  apiKeyEnv: string;
+  textModelEnv: string;
+  baseUrlEnv: string;
+  defaultTextModel: string;
+  defaultBaseUrl: string;
+  endpoint: "responses" | "chat_completions";
+  supportsVision: boolean;
+};
+
+const AI_PROVIDERS: Record<ProviderId, ProviderConfig> = {
+  openai: {
+    id: "openai",
+    label: "OpenAI",
+    apiKeyEnv: "OPENAI_API_KEY",
+    textModelEnv: "OPENAI_TEXT_MODEL",
+    baseUrlEnv: "OPENAI_BASE_URL",
+    defaultTextModel: "gpt-5.2",
+    defaultBaseUrl: "https://api.openai.com/v1",
+    endpoint: "responses",
+    supportsVision: true
+  },
+  kimi: {
+    id: "kimi",
+    label: "Kimi",
+    apiKeyEnv: "MOONSHOT_API_KEY",
+    textModelEnv: "KIMI_TEXT_MODEL",
+    baseUrlEnv: "KIMI_BASE_URL",
+    defaultTextModel: "kimi-k2.6",
+    defaultBaseUrl: "https://api.moonshot.ai/v1",
+    endpoint: "chat_completions",
+    supportsVision: true
+  },
+  deepseek: {
+    id: "deepseek",
+    label: "DeepSeek",
+    apiKeyEnv: "DEEPSEEK_API_KEY",
+    textModelEnv: "DEEPSEEK_TEXT_MODEL",
+    baseUrlEnv: "DEEPSEEK_BASE_URL",
+    defaultTextModel: "deepseek-v4-flash",
+    defaultBaseUrl: "https://api.deepseek.com",
+    endpoint: "chat_completions",
+    supportsVision: false
+  }
+};
+
 const STORY_AGENT_INSTRUCTIONS = `
 你是「神笔马良短篇小说 Agent」的写作内核。
 请为中国短篇小说平台创作者生成原创短篇方案。
@@ -95,11 +180,12 @@ export class AiProviderService {
   async generateStoryPlan(input: GeneratePlanInput): Promise<StoryPlan> {
     const mockPlan = generateStoryPlan(input);
 
-    if (!this.canUseOpenAI()) {
+    if (!this.canUseConfiguredAi()) {
       return mockPlan;
     }
 
     try {
+      const provider = this.activeProvider();
       const prompt = `${STORY_AGENT_INSTRUCTIONS}
 
 用户输入：
@@ -117,8 +203,8 @@ ${JSON.stringify(input, null, 2)}
         {
           ...parsed,
           id: `plan-${Date.now()}`,
-          providerMode: "openai",
-          providerNotice: `已使用真实 OpenAI 模型：${this.modelName()}`,
+          providerMode: provider.id,
+          providerNotice: `已使用真实 ${provider.label} 模型：${this.modelName()}`,
           memoryUsed: mockPlan.memoryUsed,
           learningBasis: mockPlan.learningBasis,
           sceneDrafts: parsed.sceneDrafts?.length ? parsed.sceneDrafts : mockPlan.sceneDrafts,
@@ -150,7 +236,7 @@ ${JSON.stringify(input, null, 2)}
 
       return {
         ...enforcedPlan,
-        providerNotice: `已使用真实 OpenAI 模型：${this.modelName()}；结果已按选题卡→结构→场景→提示词→分场正文→测试读者的顺序校验。`
+        providerNotice: `已使用真实 ${provider.label} 模型：${this.modelName()}；结果已按选题卡→结构→场景→提示词→分场正文→测试读者的顺序校验。`
       };
     } catch (error) {
       return {
@@ -164,11 +250,12 @@ ${JSON.stringify(input, null, 2)}
   async rewriteMarkedText(markId: string, selectedText: string, feedback: string): Promise<RewriteSuggestion> {
     const mockSuggestion = rewriteMarkedText(markId, selectedText, feedback);
 
-    if (!this.canUseOpenAI()) {
+    if (!this.canUseConfiguredAi()) {
       return mockSuggestion;
     }
 
     try {
+      const provider = this.activeProvider();
       const prompt = `${REWRITE_AGENT_INSTRUCTIONS}
 
 标记编号：${markId}
@@ -189,8 +276,8 @@ ${feedback}
       return {
         markId,
         ...parsed,
-        providerMode: "openai",
-        providerNotice: `已使用真实 OpenAI 模型：${this.modelName()}`
+        providerMode: provider.id,
+        providerNotice: `已使用真实 ${provider.label} 模型：${this.modelName()}`
       };
     } catch (error) {
       return {
@@ -204,11 +291,12 @@ ${feedback}
   async reviseSceneDraft(input: ReviseSceneDraftInput): Promise<SceneDraftRevision> {
     const mockRevision = reviseSceneDraft(input);
 
-    if (!this.canUseOpenAI()) {
+    if (!this.canUseConfiguredAi()) {
       return mockRevision;
     }
 
     try {
+      const provider = this.activeProvider();
       const prompt = `${SCENE_REVISION_AGENT_INSTRUCTIONS}
 
 当前场景正文：
@@ -234,8 +322,8 @@ ${input.feedback ?? ""}
         sceneId: input.sceneDraft.sceneId,
         index: input.sceneDraft.index,
         title: input.sceneDraft.title,
-        providerMode: "openai",
-        providerNotice: `已使用真实 OpenAI 模型：${this.modelName()}`
+        providerMode: provider.id,
+        providerNotice: `已使用真实 ${provider.label} 模型：${this.modelName()}`
       };
     } catch (error) {
       return {
@@ -247,19 +335,29 @@ ${input.feedback ?? ""}
   }
 
   async extractScreenshotText(dataUrl: string): Promise<{
-    providerMode: "openai" | "mock" | "fallback";
+    providerMode: AiProviderMode;
     providerNotice: string;
     recognizedText: string;
   }> {
-    if (!this.canUseOpenAI()) {
+    if (!this.canUseConfiguredAi()) {
       return {
         providerMode: "mock",
-        providerNotice: "还没有配置 OPENAI_API_KEY，截图已保存，暂时需要手动填写截图文字。",
+        providerNotice: "还没有配置可用的真实 AI API Key，截图已保存，暂时需要手动填写截图文字。",
         recognizedText: ""
       };
     }
 
     try {
+      const provider = this.activeProvider();
+
+      if (!provider.supportsVision) {
+        return {
+          providerMode: "fallback",
+          providerNotice: `${provider.label} 当前只用于文本写作；截图识别请切换到 Kimi/OpenAI，或手动校正截图文字。`,
+          recognizedText: ""
+        };
+      }
+
       const parsed = await this.createStructuredOutput<{ recognizedText: string }>(
         [
           {
@@ -291,8 +389,8 @@ ${input.feedback ?? ""}
       );
 
       return {
-        providerMode: "openai",
-        providerNotice: `已使用真实 OpenAI 模型识别截图：${this.modelName()}`,
+        providerMode: provider.id,
+        providerNotice: `已使用真实 ${provider.label} 模型识别截图：${this.modelName()}`,
         recognizedText: parsed.recognizedText.trim()
       };
     } catch (error) {
@@ -305,20 +403,39 @@ ${input.feedback ?? ""}
   }
 
   getStatus() {
+    const provider = this.activeProvider();
+    const hasApiKey = Boolean(this.apiKey());
+
     return {
-      provider: process.env.AI_PROVIDER ?? "openai",
-      mode: this.canUseOpenAI() ? "openai" : "mock",
+      provider: provider.id,
+      providerLabel: provider.label,
+      mode: hasApiKey ? provider.id : "mock",
       model: this.modelName(),
+      baseUrl: this.baseUrl(),
       embeddingModel: this.embeddingModelName(),
-      hasApiKey: Boolean(process.env.OPENAI_API_KEY),
-      message: this.canUseOpenAI()
-        ? "已检测到 OPENAI_API_KEY，写作接口会优先尝试真实 AI。"
-        : "还没有检测到 OPENAI_API_KEY，写作接口会使用本地模拟内核。"
+      hasApiKey,
+      apiKeyEnv: provider.apiKeyEnv,
+      message: hasApiKey
+        ? `已检测到 ${provider.apiKeyEnv}，写作接口会优先尝试 ${provider.label}。`
+        : `还没有检测到 ${provider.apiKeyEnv}，写作接口会使用本地模拟内核。`
     };
   }
 
+  listProviders() {
+    return Object.values(AI_PROVIDERS).map((provider) => ({
+      id: provider.id,
+      label: provider.label,
+      defaultTextModel: provider.defaultTextModel,
+      defaultBaseUrl: provider.defaultBaseUrl,
+      apiKeyEnv: provider.apiKeyEnv,
+      textModelEnv: provider.textModelEnv,
+      baseUrlEnv: provider.baseUrlEnv,
+      supportsVision: provider.supportsVision
+    }));
+  }
+
   async testConnection() {
-    if (!this.canUseOpenAI()) {
+    if (!this.canUseConfiguredAi()) {
       return {
         ok: false,
         ...this.getStatus()
@@ -355,6 +472,12 @@ ${input.feedback ?? ""}
   }
 
   private async createStructuredOutput<T>(input: OpenAIRequest["input"], name: string, schema: unknown): Promise<T> {
+    const provider = this.activeProvider();
+
+    if (provider.endpoint === "chat_completions") {
+      return this.createChatStructuredOutput<T>(input, name, provider);
+    }
+
     const request: OpenAIRequest = {
       model: this.modelName(),
       input,
@@ -368,11 +491,11 @@ ${input.feedback ?? ""}
       }
     };
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetch(this.joinUrl(this.baseUrl(), "responses"), {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+        authorization: `Bearer ${this.apiKey()}`
       },
       body: JSON.stringify(request)
     });
@@ -391,6 +514,43 @@ ${input.feedback ?? ""}
     return JSON.parse(text) as T;
   }
 
+  private async createChatStructuredOutput<T>(input: OpenAIRequest["input"], name: string, provider: ProviderConfig): Promise<T> {
+    if (this.containsImageInput(input) && !provider.supportsVision) {
+      throw new Error(`${provider.label} 当前配置不支持图片输入。`);
+    }
+
+    const request: ChatCompletionRequest = {
+      model: this.modelName(),
+      messages: this.toChatMessages(input, name),
+      response_format: {
+        type: "json_object"
+      },
+      temperature: this.temperatureForProvider(provider)
+    };
+
+    const response = await fetch(this.joinUrl(this.baseUrl(), "chat/completions"), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${this.apiKey()}`
+      },
+      body: JSON.stringify(request)
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`${provider.label} 请求失败：${response.status} ${body.slice(0, 240)}`);
+    }
+
+    const data = (await response.json()) as ChatCompletionResponse;
+    const text = this.extractChatOutputText(data);
+    if (!text) {
+      throw new Error(`${provider.label} 没有返回可解析文本`);
+    }
+
+    return this.parseJsonText<T>(text);
+  }
+
   private extractOutputText(response: OpenAIResponse) {
     if (response.output_text) {
       return response.output_text;
@@ -403,16 +563,133 @@ ${input.feedback ?? ""}
       .join("\n");
   }
 
-  private canUseOpenAI() {
-    return (process.env.AI_PROVIDER ?? "openai") === "openai" && Boolean(process.env.OPENAI_API_KEY);
+  private extractChatOutputText(response: ChatCompletionResponse) {
+    const content = response.choices?.[0]?.message?.content;
+
+    if (typeof content === "string") {
+      return content;
+    }
+
+    return content
+      ?.map((item) => item.text)
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  private toChatMessages(input: OpenAIRequest["input"], name: string): ChatCompletionRequest["messages"] {
+    const systemMessage = `你必须只返回 JSON 对象，不要输出 Markdown、代码块或解释文字。JSON 任务名：${name}。`;
+
+    if (typeof input === "string") {
+      return [
+        {
+          role: "system",
+          content: systemMessage
+        },
+        {
+          role: "user",
+          content: input
+        }
+      ];
+    }
+
+    return [
+      {
+        role: "system",
+        content: systemMessage
+      },
+      ...input.map((message) => ({
+        role: message.role === "user" ? "user" as const : "system" as const,
+        content: message.content.map((item) =>
+          item.type === "input_text"
+            ? {
+                type: "text" as const,
+                text: item.text
+              }
+            : {
+                type: "image_url" as const,
+                image_url: {
+                  url: item.image_url,
+                  detail: item.detail
+                }
+              }
+        )
+      }))
+    ];
+  }
+
+  private containsImageInput(input: OpenAIRequest["input"]) {
+    return Array.isArray(input) && input.some((message) => message.content.some((item) => item.type === "input_image"));
+  }
+
+  private parseJsonText<T>(text: string): T {
+    const cleaned = text
+      .trim()
+      .replace(/^```(?:json)?\s*/u, "")
+      .replace(/\s*```$/u, "")
+      .trim();
+
+    try {
+      return JSON.parse(cleaned) as T;
+    } catch {
+      const start = cleaned.indexOf("{");
+      const end = cleaned.lastIndexOf("}");
+
+      if (start >= 0 && end > start) {
+        return JSON.parse(cleaned.slice(start, end + 1)) as T;
+      }
+
+      throw new Error("真实 AI 返回内容不是可解析 JSON");
+    }
+  }
+
+  private canUseConfiguredAi() {
+    return Boolean(this.apiKey());
   }
 
   private modelName() {
-    return process.env.OPENAI_TEXT_MODEL ?? "gpt-5.2";
+    const provider = this.activeProvider();
+
+    return process.env[provider.textModelEnv] ?? provider.defaultTextModel;
   }
 
   private embeddingModelName() {
-    return process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
+    return this.activeProvider().id === "openai" ? (process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small") : "本地轻量索引";
+  }
+
+  private baseUrl() {
+    const provider = this.activeProvider();
+
+    return process.env[provider.baseUrlEnv] ?? provider.defaultBaseUrl;
+  }
+
+  private apiKey() {
+    const provider = this.activeProvider();
+
+    return process.env[provider.apiKeyEnv];
+  }
+
+  private activeProvider() {
+    const providerId = process.env.AI_PROVIDER;
+
+    if (providerId === "kimi" || providerId === "deepseek" || providerId === "openai") {
+      return AI_PROVIDERS[providerId];
+    }
+
+    return AI_PROVIDERS.openai;
+  }
+
+  private temperatureForProvider(provider: ProviderConfig) {
+    const model = this.modelName().toLowerCase();
+
+    if (provider.id === "kimi" && model.startsWith("kimi-k2")) {
+      return 1;
+    }
+
+    return 0.6;
+  }
+
+  private joinUrl(baseUrl: string, path: string) {
+    return `${baseUrl.replace(/\/+$/u, "")}/${path.replace(/^\/+/u, "")}`;
   }
 
   private errorMessage(error: unknown) {

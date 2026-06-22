@@ -14,9 +14,9 @@ apps/api/src/modules/ai/ai-provider.service.ts
 
 现在逻辑是：
 
-- 有 `OPENAI_API_KEY` 时优先调用 OpenAI Responses API
+- 有 Kimi、DeepSeek 或 OpenAI API Key 时优先调用真实 AI
 - 没有 Key 时使用本地模拟写作内核
-- OpenAI 调用失败时自动回退到本地模拟写作内核
+- 真实 AI 调用失败时自动回退到本地模拟写作内核
 
 本地模拟内核跑通完整短篇流程：
 

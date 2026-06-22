@@ -13,6 +13,7 @@ import type {
   EditorMarkRecord,
   EditorVersionRecord,
   GeneratePlanInput,
+  AiProviderMode,
   LocalCleanupResult,
   LocalMaintenanceResult,
   LocalResetResult,
@@ -239,6 +240,16 @@ export function applyEditorRewrite(input: {
 export type AiSettingsStatus = {
   aiProvider: string;
   hasApiKey: boolean;
+  availableAiProviders: Array<{
+    id: "openai" | "kimi" | "deepseek";
+    label: string;
+    defaultTextModel: string;
+    defaultBaseUrl: string;
+    apiKeyEnv: string;
+    textModelEnv: string;
+    baseUrlEnv: string;
+    supportsVision: boolean;
+  }>;
   storageDir: string;
   workspaceDir: string;
   logDir: string;
@@ -322,10 +333,13 @@ export type AiSettingsStatus = {
   };
   aiStatus: {
     provider: string;
-    mode: "openai" | "mock";
+    providerLabel: string;
+    mode: Exclude<AiProviderMode, "fallback">;
     model: string;
+    baseUrl: string;
     embeddingModel: string;
     hasApiKey: boolean;
+    apiKeyEnv: string;
     message: string;
   };
 };
@@ -336,9 +350,19 @@ export function getSettings() {
 
 export function saveAiSettings(input: {
   aiProvider?: string;
+  apiKey?: string;
+  textModel?: string;
+  baseUrl?: string;
   openAiTextModel?: string;
   openAiEmbeddingModel?: string;
   openAiApiKey?: string;
+  kimiApiKey?: string;
+  kimiTextModel?: string;
+  kimiBaseUrl?: string;
+  deepSeekApiKey?: string;
+  deepSeekTextModel?: string;
+  deepSeekBaseUrl?: string;
+  clearApiKey?: boolean;
   clearOpenAiApiKey?: boolean;
   dryRun?: boolean;
 }) {
@@ -360,7 +384,7 @@ export function testAiConnection() {
 
 export type AiKernelTestResult = {
   ok: boolean;
-  providerMode: "mock" | "openai" | "fallback";
+  providerMode: AiProviderMode;
   title: string;
   detail: string;
   providerNotice?: string;

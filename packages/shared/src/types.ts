@@ -146,8 +146,10 @@ export type SceneDraft = {
   revisionFocus: string;
 };
 
+export type AiProviderMode = "mock" | "openai" | "kimi" | "deepseek" | "fallback";
+
 export type SceneDraftRevision = SceneDraft & {
-  providerMode?: "mock" | "openai" | "fallback";
+  providerMode?: AiProviderMode;
   providerNotice?: string;
   changeNotes: string[];
 };
@@ -319,7 +321,7 @@ export type StoryLearningBasis = {
 export type StoryPlan = {
   id: string;
   title: string;
-  providerMode?: "mock" | "openai" | "fallback";
+  providerMode?: AiProviderMode;
   providerNotice?: string;
   memoryUsed?: string[];
   learningBasis?: StoryLearningBasis;
@@ -383,7 +385,7 @@ export type WritingAssetLibrary = {
 
 export type RewriteSuggestion = {
   markId: string;
-  providerMode?: "mock" | "openai" | "fallback";
+  providerMode?: AiProviderMode;
   providerNotice?: string;
   understanding: string;
   strategy: string;
@@ -538,7 +540,7 @@ export type ScreenshotImportResult = CsvImportResult & {
   originalName: string;
   sizeBytes: number;
   recognizedText?: string;
-  ocrProviderMode?: "openai" | "mock" | "fallback";
+  ocrProviderMode?: AiProviderMode;
   ocrNotice?: string;
 };
 

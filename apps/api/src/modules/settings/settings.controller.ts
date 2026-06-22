@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Inject, Patch, Post, Query } from "@nestjs/common";
-import { validateStoryWorkflow } from "@shenbi/shared";
+import { validateStoryWorkflow, type AiProviderMode } from "@shenbi/shared";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
@@ -52,9 +52,19 @@ type PersistenceStatus = {
 
 type UpdateSettingsBody = {
   aiProvider?: string;
+  apiKey?: string;
+  textModel?: string;
+  baseUrl?: string;
   openAiApiKey?: string;
   openAiTextModel?: string;
   openAiEmbeddingModel?: string;
+  kimiApiKey?: string;
+  kimiTextModel?: string;
+  kimiBaseUrl?: string;
+  deepSeekApiKey?: string;
+  deepSeekTextModel?: string;
+  deepSeekBaseUrl?: string;
+  clearApiKey?: boolean;
   clearOpenAiApiKey?: boolean;
   dryRun?: boolean;
 };
@@ -79,7 +89,7 @@ type WorkflowSmokeResult = {
 
 type AiKernelTestResult = {
   ok: boolean;
-  providerMode: "mock" | "openai" | "fallback";
+  providerMode: AiProviderMode;
   title: string;
   detail: string;
   providerNotice?: string;
@@ -111,6 +121,7 @@ export class SettingsController {
     const storageDir = process.env.LOCAL_STORAGE_DIR ?? "./storage";
     const workspaceDir = process.env.WORKSPACE_DIR ?? "./workspace";
     const logDir = process.env.LOG_DIR ?? "./logs";
+    const aiStatus = this.aiProvider.getStatus();
     const [database, redis, knowledge, storage, workspace, logs] = await Promise.all([
       this.checkDatabase(),
       this.checkRedis(),
@@ -121,9 +132,10 @@ export class SettingsController {
     ]);
 
     return {
-      aiProvider: process.env.AI_PROVIDER ?? "openai",
-      hasApiKey: Boolean(process.env.OPENAI_API_KEY),
-      aiStatus: this.aiProvider.getStatus(),
+      aiProvider: aiStatus.provider,
+      hasApiKey: aiStatus.hasApiKey,
+      aiStatus,
+      availableAiProviders: this.aiProvider.listProviders(),
       storageDir,
       workspaceDir,
       logDir,
@@ -150,11 +162,15 @@ export class SettingsController {
 
   @Patch()
   async updateSettings(@Body() body: UpdateSettingsBody = {}) {
-    const aiProvider = this.cleanText(body.aiProvider) || process.env.AI_PROVIDER || "openai";
-    const openAiTextModel = this.cleanText(body.openAiTextModel) || process.env.OPENAI_TEXT_MODEL || "gpt-5.2";
+    const aiProvider = this.normalizeAiProvider(this.cleanText(body.aiProvider) || process.env.AI_PROVIDER || "openai");
+    const providerInfo = this.aiProviderInfo(aiProvider);
+    const textModel = this.providerTextModelFromBody(aiProvider, body) || process.env[providerInfo.textModelEnv] || providerInfo.defaultTextModel;
+    const baseUrl = this.providerBaseUrlFromBody(aiProvider, body) || process.env[providerInfo.baseUrlEnv] || providerInfo.defaultBaseUrl;
     const openAiEmbeddingModel = this.cleanText(body.openAiEmbeddingModel) || process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small";
-    const nextApiKey = body.clearOpenAiApiKey ? "" : this.cleanText(body.openAiApiKey) || process.env.OPENAI_API_KEY || "";
-    const previewStatus = this.buildAiStatus(aiProvider, openAiTextModel, openAiEmbeddingModel, Boolean(nextApiKey));
+    const shouldClearKey = Boolean(body.clearApiKey || (body.clearOpenAiApiKey && aiProvider === "openai"));
+    const providedApiKey = this.providerApiKeyFromBody(aiProvider, body);
+    const nextApiKey = shouldClearKey ? "" : providedApiKey || process.env[providerInfo.apiKeyEnv] || "";
+    const previewStatus = this.buildAiStatus(providerInfo, textModel, baseUrl, openAiEmbeddingModel, Boolean(nextApiKey));
 
     if (body.dryRun) {
       return {
@@ -167,26 +183,31 @@ export class SettingsController {
     }
 
     process.env.AI_PROVIDER = aiProvider;
-    process.env.OPENAI_TEXT_MODEL = openAiTextModel;
-    process.env.OPENAI_EMBEDDING_MODEL = openAiEmbeddingModel;
+    process.env[providerInfo.textModelEnv] = textModel;
+    process.env[providerInfo.baseUrlEnv] = baseUrl;
 
-    if (body.clearOpenAiApiKey) {
-      delete process.env.OPENAI_API_KEY;
+    if (aiProvider === "openai") {
+      process.env.OPENAI_EMBEDDING_MODEL = openAiEmbeddingModel;
+    }
+
+    if (shouldClearKey) {
+      delete process.env[providerInfo.apiKeyEnv];
     } else if (nextApiKey) {
-      process.env.OPENAI_API_KEY = nextApiKey;
+      process.env[providerInfo.apiKeyEnv] = nextApiKey;
     }
 
     await this.writeLocalEnv({
       AI_PROVIDER: aiProvider,
-      OPENAI_TEXT_MODEL: openAiTextModel,
-      OPENAI_EMBEDDING_MODEL: openAiEmbeddingModel,
-      OPENAI_API_KEY: process.env.OPENAI_API_KEY
+      [providerInfo.textModelEnv]: textModel,
+      [providerInfo.baseUrlEnv]: baseUrl,
+      ...(aiProvider === "openai" ? { OPENAI_EMBEDDING_MODEL: openAiEmbeddingModel } : {}),
+      [providerInfo.apiKeyEnv]: process.env[providerInfo.apiKeyEnv]
     });
 
     return {
       status: "saved",
       dryRun: false,
-      hasApiKey: Boolean(process.env.OPENAI_API_KEY),
+      hasApiKey: Boolean(process.env[providerInfo.apiKeyEnv]),
       aiStatus: this.aiProvider.getStatus(),
       message: "AI 设置已保存到本机配置文件。"
     };
@@ -238,8 +259,8 @@ export class SettingsController {
         providerMode,
         title: plan.title,
         detail:
-          providerMode === "openai"
-            ? "真实 AI 写作内核已跑通，并且十步写作结构完整。"
+          providerMode !== "mock" && providerMode !== "fallback"
+            ? `${this.providerModeLabel(providerMode)} 写作内核已跑通，并且十步写作结构完整。`
             : providerMode === "fallback"
               ? "真实 AI 暂时没有返回可用结果，但系统已自动切回本地写作内核，十步结构仍然完整。"
               : "本地模拟写作内核已跑通；没有配置 API Key 时也可以继续创作和保存。",
@@ -251,7 +272,7 @@ export class SettingsController {
           sceneDrafts: plan.sceneDrafts.length
         },
         sampleClues: this.sampleClues(plan),
-        nextStep: providerMode === "mock" ? "需要真实 AI 时，在这里填入 OpenAI API Key 后再测试。" : undefined
+        nextStep: providerMode === "mock" ? "需要真实 AI 时，在这里选择 Kimi、DeepSeek 或 OpenAI，填入对应 API Key 后再测试。" : undefined
       };
     } catch (error) {
       return {
@@ -767,17 +788,79 @@ export class SettingsController {
     return error instanceof Error ? error.message : "未知错误";
   }
 
-  private buildAiStatus(provider: string, model: string, embeddingModel: string, hasApiKey: boolean) {
-    const canUseOpenAI = provider === "openai" && hasApiKey;
-
+  private buildAiStatus(
+    provider: ReturnType<AiProviderService["listProviders"]>[number],
+    model: string,
+    baseUrl: string,
+    embeddingModel: string,
+    hasApiKey: boolean
+  ) {
     return {
-      provider,
-      mode: canUseOpenAI ? "openai" : "mock",
+      provider: provider.id,
+      providerLabel: provider.label,
+      mode: hasApiKey ? provider.id : "mock",
       model,
-      embeddingModel,
+      baseUrl,
+      embeddingModel: provider.id === "openai" ? embeddingModel : "本地轻量索引",
       hasApiKey,
-      message: canUseOpenAI ? "已配置 API Key，写作接口会优先尝试真实 AI。" : "还没有配置 API Key，写作接口会使用本地模拟内核。"
+      apiKeyEnv: provider.apiKeyEnv,
+      message: hasApiKey ? `已配置 ${provider.label} API Key，写作接口会优先尝试真实 AI。` : "还没有配置 API Key，写作接口会使用本地模拟内核。"
     };
+  }
+
+  private normalizeAiProvider(value: string) {
+    if (value === "kimi" || value === "deepseek" || value === "openai") {
+      return value;
+    }
+
+    return "openai";
+  }
+
+  private aiProviderInfo(providerId: "openai" | "kimi" | "deepseek") {
+    return this.aiProvider.listProviders().find((provider) => provider.id === providerId) ?? this.aiProvider.listProviders()[0];
+  }
+
+  private providerTextModelFromBody(providerId: "openai" | "kimi" | "deepseek", body: UpdateSettingsBody) {
+    if (providerId === "openai") {
+      return this.cleanText(body.textModel) || this.cleanText(body.openAiTextModel);
+    }
+
+    if (providerId === "kimi") {
+      return this.cleanText(body.textModel) || this.cleanText(body.kimiTextModel);
+    }
+
+    return this.cleanText(body.textModel) || this.cleanText(body.deepSeekTextModel);
+  }
+
+  private providerBaseUrlFromBody(providerId: "openai" | "kimi" | "deepseek", body: UpdateSettingsBody) {
+    if (providerId === "openai") {
+      return this.cleanText(body.baseUrl);
+    }
+
+    if (providerId === "kimi") {
+      return this.cleanText(body.baseUrl) || this.cleanText(body.kimiBaseUrl);
+    }
+
+    return this.cleanText(body.baseUrl) || this.cleanText(body.deepSeekBaseUrl);
+  }
+
+  private providerApiKeyFromBody(providerId: "openai" | "kimi" | "deepseek", body: UpdateSettingsBody) {
+    if (providerId === "openai") {
+      return this.cleanText(body.apiKey) || this.cleanText(body.openAiApiKey);
+    }
+
+    if (providerId === "kimi") {
+      return this.cleanText(body.apiKey) || this.cleanText(body.kimiApiKey);
+    }
+
+    return this.cleanText(body.apiKey) || this.cleanText(body.deepSeekApiKey);
+  }
+
+  private providerModeLabel(mode: string) {
+    if (mode === "kimi") return "Kimi";
+    if (mode === "deepseek") return "DeepSeek";
+    if (mode === "openai") return "OpenAI";
+    return "真实 AI";
   }
 
   private async writeLocalEnv(values: Record<string, string | undefined>) {

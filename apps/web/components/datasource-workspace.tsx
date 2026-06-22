@@ -1112,7 +1112,7 @@ export function DatasourceWorkspace() {
                 onChange={(event) => setScreenshotText(event.target.value)}
                 placeholder="可以留空让系统自动识别截图；也可以手动校正：作品名：她把旧姓还给雨夜 阅读量：12万 收益：438 完读率：71% 题材：女性成长 评论反馈：读者说女主反击克制但中段略慢 评论关键词：克制反击、节奏慢"
               />
-              <p className="text-xs leading-5 text-muted">配置 OpenAI Key 后会自动读图；没有 Key 时会先保存截图，等待你补充文字。</p>
+              <p className="text-xs leading-5 text-muted">配置 Kimi/OpenAI Key 后会自动读图；没有 Key 时会先保存截图，等待你补充文字。</p>
             </div>
             <Button disabled={loading || !screenshotDataUrl} onClick={handleImportScreenshot}>
               <Upload size={16} />

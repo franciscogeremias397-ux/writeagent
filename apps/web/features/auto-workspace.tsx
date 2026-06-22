@@ -35,7 +35,7 @@ export function AutoWorkspace({
     protagonist: "县城女性",
     ending: "逆袭成功",
     style: "现实质感",
-    mode: "步步确认",
+    mode: "快速生成",
     note: initialNote
   });
   const [trends, setTrends] = useState<Trend[]>(fallbackTrends);
@@ -206,51 +206,64 @@ export function AutoWorkspace({
     <div className="mx-auto grid max-w-7xl gap-6">
       <section>
         <p className="mb-2 text-sm text-muted">自动写作</p>
-        <h1 className="text-3xl font-semibold">选好参数，生成一套短篇草稿工程</h1>
+        <h1 className="text-3xl font-semibold">一句话方向，自动跑完十步</h1>
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <Card>
-          <CardHeader title="创作参数" eyebrow="第一版会先生成选题卡、结构、人物卡和场景卡" />
+          <CardHeader title="开始一篇短篇" eyebrow="默认全自动生成；需要人工把关时再切到步步确认" action={<Badge>{form.mode}</Badge>} />
           <div className="grid gap-5 p-5">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <AutoField
-                label="平台"
-                value={form.platform}
-                options={withCurrentOption(fieldOptions.platform, form.platform)}
-                onChange={(value) => updateField("platform", value)}
-              />
-              <AutoField label="赛道" value={form.genre} options={withCurrentOption(fieldOptions.genre, form.genre)} onChange={(value) => updateField("genre", value)} />
-              <AutoField label="篇幅" value={form.length} options={fieldOptions.length} onChange={(value) => updateField("length", value)} />
-              <AutoField label="情绪方向" value={form.emotion} options={fieldOptions.emotion} onChange={(value) => updateField("emotion", value)} />
-              <AutoField
-                label="主角类型"
-                value={form.protagonist}
-                options={fieldOptions.protagonist}
-                onChange={(value) => updateField("protagonist", value)}
-              />
-              <AutoField label="结局类型" value={form.ending} options={fieldOptions.ending} onChange={(value) => updateField("ending", value)} />
-              <AutoField label="文风" value={form.style} options={fieldOptions.style} onChange={(value) => updateField("style", value)} />
-              <AutoField label="生成模式" value={form.mode} options={fieldOptions.mode} onChange={(value) => updateField("mode", value)} />
-            </div>
             <div className="grid gap-2">
-              <FieldLabel>补充要求</FieldLabel>
+              <FieldLabel>创作方向</FieldLabel>
               <textarea
                 value={form.note}
                 onChange={(event) => updateField("note", event.target.value)}
-                className="min-h-28 resize-none rounded-md border border-line bg-white p-4 text-sm leading-7 outline-none focus:border-ink"
+                placeholder="例如：都市悬疑，女主发现自己的记忆被人付费修改过，结尾要有反杀和后劲。"
+                className="min-h-36 resize-none rounded-md border border-line bg-white p-4 text-sm leading-7 outline-none focus:border-ink"
               />
             </div>
-            <div className="flex flex-wrap justify-end gap-2">
-              <GhostButton onClick={handleSavePreset} disabled={isSavingPreset}>
-                <Save size={16} />
-                {isSavingPreset ? "保存中" : "保存参数"}
-              </GhostButton>
-              <Button onClick={() => handleGenerate()} disabled={isGenerating}>
-                {isGenerating ? "生成中..." : "开始自动生成"}
-                <ArrowRight size={16} />
-              </Button>
+            <div className="grid gap-3 rounded-md border border-line bg-paper p-4 text-sm md:grid-cols-4">
+              <QuickSpec label="平台" value={form.platform} />
+              <QuickSpec label="赛道" value={form.genre} />
+              <QuickSpec label="篇幅" value={form.length} />
+              <QuickSpec label="文风" value={form.style} />
             </div>
+            <div className="flex flex-wrap justify-between gap-2">
+              <GhostButton onClick={applyRecommendedTrend}>套用今日风向</GhostButton>
+              <div className="flex flex-wrap gap-2">
+                <GhostButton onClick={handleSavePreset} disabled={isSavingPreset}>
+                  <Save size={16} />
+                  {isSavingPreset ? "保存中" : "保存模板"}
+                </GhostButton>
+                <Button onClick={() => handleGenerate()} disabled={isGenerating}>
+                  {isGenerating ? "生成中..." : form.mode === "步步确认" ? "生成并逐步确认" : "一键生成初稿"}
+                  <ArrowRight size={16} />
+                </Button>
+              </div>
+            </div>
+            <details className="rounded-md border border-line bg-white p-4">
+              <summary className="cursor-pointer text-sm font-medium text-ink">高级参数</summary>
+              <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <AutoField
+                  label="平台"
+                  value={form.platform}
+                  options={withCurrentOption(fieldOptions.platform, form.platform)}
+                  onChange={(value) => updateField("platform", value)}
+                />
+                <AutoField label="赛道" value={form.genre} options={withCurrentOption(fieldOptions.genre, form.genre)} onChange={(value) => updateField("genre", value)} />
+                <AutoField label="篇幅" value={form.length} options={fieldOptions.length} onChange={(value) => updateField("length", value)} />
+                <AutoField label="情绪方向" value={form.emotion} options={fieldOptions.emotion} onChange={(value) => updateField("emotion", value)} />
+                <AutoField
+                  label="主角类型"
+                  value={form.protagonist}
+                  options={fieldOptions.protagonist}
+                  onChange={(value) => updateField("protagonist", value)}
+                />
+                <AutoField label="结局类型" value={form.ending} options={fieldOptions.ending} onChange={(value) => updateField("ending", value)} />
+                <AutoField label="文风" value={form.style} options={fieldOptions.style} onChange={(value) => updateField("style", value)} />
+                <AutoField label="生成模式" value={form.mode} options={fieldOptions.mode} onChange={(value) => updateField("mode", value)} />
+              </div>
+            </details>
             {error ? <p className="rounded-md border border-line bg-white p-3 text-sm text-muted">{error}</p> : null}
             <ComplianceNotice />
           </div>
@@ -357,6 +370,15 @@ function AutoField({ label, value, options, onChange }: { label: string; value: 
           </option>
         ))}
       </SelectInput>
+    </div>
+  );
+}
+
+function QuickSpec({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs text-muted">{label}</p>
+      <p className="mt-1 break-words font-medium text-ink">{value}</p>
     </div>
   );
 }

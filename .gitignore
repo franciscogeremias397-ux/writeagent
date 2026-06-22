@@ -12,6 +12,7 @@ coverage/
 
 # local environment and secrets
 .env
+.env.local
 .env.*
 !.env.example
 *.pem

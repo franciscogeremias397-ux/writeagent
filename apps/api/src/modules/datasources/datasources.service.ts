@@ -174,7 +174,7 @@ const fallbackDatasources: DatasourceRecord[] = [
     type: "screenshot",
     enabled: false,
     frequency: "手动",
-    note: "有 OpenAI Key 时可自动识别截图文字，也支持手动校正文字。",
+    note: "有 Kimi/OpenAI Key 时可自动识别截图文字，也支持手动校正文字。",
     persisted: false,
     createdAt: "2026-06-07",
     updatedAt: "2026-06-07"
