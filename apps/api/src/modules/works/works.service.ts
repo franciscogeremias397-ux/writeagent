@@ -18,6 +18,7 @@ import {
   type ReviewReportResult,
   type StoryPlan,
   type Work,
+  type WorkGenerationMetadata,
   type WorkspaceExportResult,
   type WorkStatus,
   type WritingMemory
@@ -163,6 +164,7 @@ export type CreateWorkInput = {
   completionRate?: number;
   commentFeedback?: string;
   commentKeywords?: string[] | string;
+  generation?: WorkGenerationMetadata;
 };
 
 export type UpdateWorkInput = Partial<CreateWorkInput> & {
@@ -242,7 +244,10 @@ export class WorksService {
           commentKeywords: payload.commentKeywords
         }
       });
-      const shared = this.toSharedWork(work as DbWork);
+      const shared = {
+        ...this.toSharedWork(work as DbWork),
+        generation: payload.generation
+      };
 
       await this.upsertLocalWork({ ...shared, fullText }).catch(() => undefined);
 
@@ -266,6 +271,7 @@ export class WorksService {
         fullText,
         commentFeedback: payload.commentFeedback,
         commentKeywords: payload.commentKeywords,
+        generation: payload.generation,
         readCount: payload.readCount,
         subscriptionCount: payload.subscriptionCount,
         revenue: payload.revenue,
@@ -311,7 +317,8 @@ export class WorksService {
       });
       const shared = {
         ...this.toSharedWork(work as DbWork),
-        storyPlan: existing.storyPlan ? { ...existing.storyPlan, draft: normalized.fullText ?? existing.storyPlan.draft } : existing.storyPlan
+        storyPlan: existing.storyPlan ? { ...existing.storyPlan, draft: normalized.fullText ?? existing.storyPlan.draft } : existing.storyPlan,
+        generation: normalized.generation
       };
 
       await this.upsertLocalWork(shared).catch(() => undefined);
@@ -660,39 +667,8 @@ export class WorksService {
   }
 
   private async ensureSeedWorks() {
-    const count = await this.prisma.work.count();
-
-    if (count > 0) {
-      return;
-    }
-
-    await this.prisma.work.createMany({
-      data: mockWorks.map((work) => ({
-        id: work.id,
-        title: work.title,
-        cover: work.cover,
-        status: work.status,
-        platform: work.platform,
-        genreTags: work.genreTags,
-        styleTags: work.styleTags,
-        wordCount: work.wordCount,
-        summary: work.summary,
-        fullText: work.fullText ?? this.fallbackFullText(work),
-        storyPlan: this.storyPlanToJson(work.storyPlan),
-        commentFeedback: work.commentFeedback,
-        commentKeywords: work.commentKeywords ?? [],
-        sourceLabel: work.sourceLabel,
-        sourceDetail: work.sourceDetail,
-        importedAt: work.importedAt ? new Date(work.importedAt) : null,
-        readCount: work.readCount,
-        subscriptionCount: work.subscriptionCount,
-        revenue: work.revenue,
-        completionRate: work.completionRate,
-        createdAt: new Date(work.createdAt),
-        updatedAt: new Date(work.updatedAt)
-      })),
-      skipDuplicates: true
-    });
+    // V2 is a personal writing workspace. Do not auto-seed demo works into the user's real shelf.
+    await Promise.resolve();
   }
 
   private toSharedWork(work: DbWork): Work {
@@ -717,6 +693,7 @@ export class WorksService {
       subscriptionCount: work.subscriptionCount,
       revenue: this.toNumber(work.revenue),
       completionRate: work.completionRate,
+      generation: this.inferGenerationMetadata(work.styleTags, this.toDate(work.createdAt), work.wordCount),
       createdAt: this.toDate(work.createdAt),
       updatedAt: this.toDate(work.updatedAt)
     };
@@ -796,7 +773,8 @@ export class WorksService {
         commentKeywords: this.mergeKeywords(shared.commentKeywords, localExisting?.commentKeywords),
         sourceLabel: localExisting?.sourceLabel ?? shared.sourceLabel,
         sourceDetail: localExisting?.sourceDetail ?? shared.sourceDetail,
-        importedAt: localExisting?.importedAt ?? shared.importedAt
+        importedAt: localExisting?.importedAt ?? shared.importedAt,
+        generation: localExisting?.generation ?? shared.generation
       };
 
       await this.upsertLocalWork(savedWork).catch(() => undefined);
@@ -933,12 +911,23 @@ export class WorksService {
 
   private async listLocalWorks() {
     const localData = await this.readLocalWorksData();
+
+    if (localData.works.length > 0) {
+      return this.sortWorks(this.uniqueWorks(localData.works));
+    }
+
     const deletedIds = new Set(localData.deletedWorkIds);
     return this.sortWorks(this.uniqueWorks([...localData.works, ...mockWorks.filter((work) => !deletedIds.has(work.id))]));
   }
 
   private async findLocalWork(id: string) {
-    return (await this.listLocalWorks()).find((work) => work.id === id) ?? mockWorks[0];
+    const work = (await this.listLocalWorks()).find((item) => item.id === id);
+
+    if (!work) {
+      throw new Error("没有找到这篇作品。");
+    }
+
+    return work;
   }
 
   private async mergeLocalPlan(work: Work): Promise<Work> {
@@ -959,7 +948,8 @@ export class WorksService {
       commentKeywords: localWork.commentKeywords ?? work.commentKeywords ?? [],
       sourceLabel: localWork.sourceLabel ?? work.sourceLabel,
       sourceDetail: localWork.sourceDetail ?? work.sourceDetail,
-      importedAt: localWork.importedAt ?? work.importedAt
+      importedAt: localWork.importedAt ?? work.importedAt,
+      generation: localWork.generation ?? work.generation
     };
 
     const storedPlan = work.storyPlan ?? localWork.storyPlan;
@@ -1059,6 +1049,7 @@ export class WorksService {
       sourceLabel: work.sourceLabel?.trim() || undefined,
       sourceDetail: work.sourceDetail?.trim() || undefined,
       importedAt: work.importedAt,
+      generation: this.normalizeGenerationMetadata(work.generation) ?? this.inferGenerationMetadata(styleTags, work.createdAt ?? today, work.wordCount),
       readCount: work.readCount ?? 0,
       subscriptionCount: work.subscriptionCount ?? 0,
       revenue: work.revenue ?? 0,
@@ -1084,11 +1075,64 @@ export class WorksService {
       fullText: input.fullText?.trim(),
       commentFeedback: input.commentFeedback?.trim() || undefined,
       commentKeywords: this.normalizeTagInput(input.commentKeywords, []),
+      generation: this.normalizeGenerationMetadata(input.generation),
       readCount: this.positiveNumber(input.readCount) ?? 0,
       subscriptionCount: this.positiveNumber(input.subscriptionCount) ?? 0,
       revenue: this.positiveNumber(input.revenue) ?? 0,
       completionRate: this.clampPercent(input.completionRate) ?? 0
     };
+  }
+
+  private normalizeGenerationMetadata(value?: WorkGenerationMetadata): WorkGenerationMetadata | undefined {
+    if (!value) {
+      return undefined;
+    }
+
+    return {
+      jobId: value.jobId?.trim() || undefined,
+      createdAt: value.createdAt || new Date().toISOString(),
+      route: value.route,
+      proseProvider: value.proseProvider,
+      proseModel: value.proseModel?.trim() || undefined,
+      blueprintProvider: value.blueprintProvider,
+      blueprintModel: value.blueprintModel?.trim() || undefined,
+      providerNotice: value.providerNotice?.trim() || undefined,
+      targetLength: value.targetLength?.trim() || undefined,
+      completedSections: this.positiveNumber(value.completedSections),
+      totalSections: this.positiveNumber(value.totalSections),
+      wordCount: this.positiveNumber(value.wordCount),
+      continuations: this.positiveNumber(value.continuations),
+      rewrites: this.positiveNumber(value.rewrites),
+      continuityChecks: this.positiveNumber(value.continuityChecks),
+      attempts: this.positiveNumber(value.attempts),
+      checkpointFile: value.checkpointFile?.trim() || undefined
+    };
+  }
+
+  private inferGenerationMetadata(styleTags: string[], createdAt: string, wordCount?: number): WorkGenerationMetadata | undefined {
+    const tags = styleTags.map((tag) => tag.toLowerCase());
+
+    if (tags.includes("deepseek")) {
+      return {
+        createdAt,
+        route: "legacy_deepseek",
+        proseProvider: "deepseek",
+        proseModel: "deepseek-v4-flash",
+        wordCount
+      };
+    }
+
+    if (tags.includes("kimi")) {
+      return {
+        createdAt,
+        route: "kimi_full_text",
+        proseProvider: "kimi",
+        proseModel: "kimi-k2.6",
+        wordCount
+      };
+    }
+
+    return undefined;
   }
 
   private normalizeWorkUpdate(existing: Work, input: UpdateWorkInput): Work {
@@ -1109,6 +1153,7 @@ export class WorksService {
       fullText,
       commentFeedback: input.commentFeedback === undefined ? existing.commentFeedback : input.commentFeedback.trim() || undefined,
       commentKeywords: input.commentKeywords === undefined ? existing.commentKeywords ?? [] : this.normalizeTagInput(input.commentKeywords, []),
+      generation: input.generation === undefined ? existing.generation : this.normalizeGenerationMetadata(input.generation),
       readCount: this.positiveNumber(input.readCount) ?? existing.readCount,
       subscriptionCount: this.positiveNumber(input.subscriptionCount) ?? existing.subscriptionCount,
       revenue: this.positiveNumber(input.revenue) ?? existing.revenue,

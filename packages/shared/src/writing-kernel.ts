@@ -3,6 +3,8 @@ import type {
   CharacterCard,
   ConflictStep,
   EmotionalBeat,
+  FullDraftAiResult,
+  FullDraftInput,
   InformationGap,
   PersonalStrategy,
   ReaderReport,
@@ -12,6 +14,8 @@ import type {
   SceneDraft,
   SceneDraftRevision,
   ScenePrompt,
+  StoryOutlineInput,
+  StoryOutlineResult,
   StoryContinuityMemory,
   StoryLearningBasis,
   StoryOriginalityCheck,
@@ -75,6 +79,88 @@ export type GeneratePlanInput = {
 };
 
 const fallbackInspiration = "一个普通女孩在亲情误解里发现自己的真正价值，并用克制的方式完成反击。";
+
+export function generateStoryOutlineMock(input: StoryOutlineInput = { mode: "autopilot" }): StoryOutlineResult {
+  const inspiration = input.inspiration?.trim() || "一个普通人从被动承受开始，抓住一次被忽视的证据，完成克制反击。";
+  const direction = input.optionalDirection?.trim() || (input.mode === "autopilot" ? "现实情感反转" : "现实强冲突短篇");
+  const previousCount = input.previousOutlines?.length ?? 0;
+  const title = /病历|保险|丈夫/u.test(inspiration) ? "病历复印件" : previousCount ? "雨夜证词" : "雨夜留证";
+  const outline = [
+    `这是一个面向番茄短故事的${direction}。`,
+    "主角一开始处在亲密关系或家庭关系里的被动位置，发现一条被别人低估的证据，意识到自己不是被误会，而是被人有计划地利用。",
+    "故事前段用具体异常制造点击欲，中段让主角用证据链一步步夺回主动权，后段把冲突推到公开场合，让对方无法再用情绪和关系压制她。",
+    "结尾不靠外部英雄救场，而是落在主角重新掌控自己人生和资料的情绪爽点上。"
+  ].join("");
+
+  return {
+    title,
+    direction,
+    outline: outline.slice(0, 500),
+    highlights: ["前 300 字给出强异常和明确代价", "中段用证据推进，不靠吵架水字数", "结尾回收控制权，形成现实爽感"],
+    marketReason: `围绕“${inspiration.slice(0, 36)}”提炼平台读者容易理解的冲突、反转和情绪回收。`,
+    providerMode: "mock",
+    providerNotice: "当前为本地故事方案兜底，用于验证方案确认和全文生成链路。"
+  };
+}
+
+export function generateFullDraftMock(input: FullDraftInput = { mode: "autopilot" }): FullDraftAiResult {
+  const inspiration = input.inspiration?.trim() || "一个普通人从被动承受开始，抓住一次被忽视的证据，完成克制反击。";
+  const approvedOutline = input.approvedOutline;
+  const direction = approvedOutline?.direction?.trim() || input.optionalDirection?.trim() || (input.mode === "autopilot" ? "现实情感反转" : "现实强冲突短篇");
+  const targetLength = input.targetLength && input.targetLength !== "auto" ? `${input.targetLength} 字` : "约 2 万字完整短篇";
+  const avoidNotes = normalizeAvoidList(input.avoid);
+  const title = approvedOutline?.title?.trim() || (/病历|保险|丈夫/u.test(inspiration) ? "病历复印件" : "雨夜留证");
+  const content = [
+    "我从医院回来的那天，丈夫周明把厨房擦得太干净了。灶台没有一点油星，垃圾袋换成新的，连我昨晚放在玄关的病历袋也不见了。",
+    "他端着一碗汤出来，语气温和得像背过稿：“医生怎么说？别胡思乱想，先把身体养好。”",
+    "我看着那碗汤，没有接。手机里，保险公司客服刚刚发来一条确认短信：感谢您补充被保险人近期病理资料，理赔评估将在三个工作日内完成。",
+    "被保险人是我。补充资料的人，却不是我。",
+    "周明的手顿了一下，汤面晃出细小的波纹。他很快笑了：“现在骗子短信多，你别当真。”",
+    "我也笑：“是吗？那你手机借我报个警。”",
+    "屋里安静下来。窗外下着小雨，楼道感应灯亮了又灭。结婚三年，我第一次发现，一个人心虚的时候，连呼吸都会变轻。",
+    "周明没有把手机给我。他说公司有急事，转身要走。我拦在门口，手里捏着从物业打印室取回来的监控截图。昨天下午三点十六分，他拿着我的病历袋，进了小区门口那家复印店。",
+    "他脸上的温柔终于裂开：“林夏，你非要闹得这么难看吗？”",
+    "我说：“把我的病历卖给保险公司时，你怎么没嫌难看？”",
+    "他沉默两秒，忽然低声笑了：“你以为你现在还能做什么？病历是真的，签字也是你以前授权过的。公司只认材料，不认眼泪。”",
+    "这句话让我彻底冷静下来。原来他不是一时糊涂，他连我会怎么反抗都算过了。",
+    "我没有吵，也没有哭。我打开门，让他走。周明以为自己赢了，临出门前甚至替我把汤放回餐桌，说：“别任性，过两天我回来接你去复查。”",
+    "门关上的瞬间，我拨通了另一个号码。电话那头，是那家保险公司的合规投诉专线。半小时前，我已经把复印店老板的收款记录、监控截图、短信截图，以及周明用我旧授权书伪造补充提交的时间线整理成了邮件。",
+    "客服问我是否确认实名投诉。我说确认。",
+    "第二天上午，周明的部门经理先给我打电话。他声音客气，问我和周明是不是有什么误会。我把邮件抄送给他，只回了一句：如果这是误会，请贵司出具数据调取记录。",
+    "下午，周明回来了。他没带钥匙，站在门外敲了很久。那时我正在收拾行李，桌上放着离婚协议和警方受案回执。",
+    "他在门外说：“林夏，我只是怕以后压力太大。我也是为这个家考虑。”",
+    "我拉开门，看见他眼里的慌张终于大过了算计。楼道灯亮着，邻居家的门开了一条缝。",
+    "我把那碗没有喝过的汤递给他：“那你先为这个家喝一口。”",
+    "周明没有接。",
+    "我轻声说：“你看，你也知道有些东西不能随便吞下去。”",
+    "后来保险公司暂停了他的合作权限，复印店老板愿意出具证言，警方把周明带走问话。朋友问我难不难过，我想了很久，说当然难过。",
+    "可比难过更清楚的是，我终于明白，真正救我的不是谁突然良心发现，而是我在最害怕的那一刻，没有把证据交给情绪。",
+    "一个月后，我搬进新租的房子。窗台很小，只放得下一盆薄荷。复查报告出来那天，我把报告拍照存档，然后锁进自己的云盘。",
+    "这一次，所有关于我的东西，都只由我决定给谁看。"
+  ].join("\n\n");
+
+  return {
+    title,
+    content,
+    genre: direction,
+    tags: Array.from(new Set([direction, "强冲突", "反转", "现实质感"])).slice(0, 5),
+    summary: approvedOutline?.outline?.trim() || `围绕“${inspiration.slice(0, 42)}”生成的市场导向短篇样稿。`,
+    marketSummary: `本地兜底选择 ${direction}，优先保证开头冲突、证据推进和结尾情绪回收。目标篇幅：${targetLength}。`,
+    qualitySummary: `样稿完整度可用于验收链路；${avoidNotes.length ? `已记录禁写方向：${avoidNotes.join("、")}。` : "未设置禁写方向。"}真实发布前建议使用已配置模型重写扩展。`,
+    internalPlan: "市场机会围绕亲密关系背叛与证据反击；正文采用即时冲突开头、证据递进、公开压力与自我夺回控制权的收束。",
+    revisionNotes: ["开头 300 字内给出异常短信和病历消失。", "中段用证据链推动，不用解释性大纲。", "结尾落在女主重新掌控个人资料。"],
+    providerMode: "mock",
+    providerNotice: "当前为本地 V2 样稿兜底，用于验证生成、保存和跳转链路。"
+  };
+}
+
+function normalizeAvoidList(avoid?: FullDraftInput["avoid"]) {
+  if (Array.isArray(avoid)) {
+    return avoid.map((item) => item.trim()).filter(Boolean);
+  }
+
+  return avoid?.split(/[、,\n]/u).map((item) => item.trim()).filter(Boolean) ?? [];
+}
 
 function normalizeInput(input: GeneratePlanInput) {
   return {

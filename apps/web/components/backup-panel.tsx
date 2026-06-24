@@ -28,7 +28,7 @@ export function BackupPanel() {
   const [cleanupResult, setCleanupResult] = useState<LocalCleanupResult | null>(null);
   const [maintenanceResult, setMaintenanceResult] = useState<LocalMaintenanceResult | null>(null);
   const [resetResult, setResetResult] = useState<LocalResetResult | null>(null);
-  const [message, setMessage] = useState("可以把当前作品、趋势、记忆、灵感模板、复盘和采集日志导出为本地备份。");
+  const [message, setMessage] = useState("可以把当前作品和本地创作资料导出为本地备份。");
   const [exporting, setExporting] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [cleaning, setCleaning] = useState(false);
@@ -70,7 +70,7 @@ export function BackupPanel() {
       setConfirmClearCache(false);
       setConfirmClearLogs(false);
       setConfirmReset(false);
-      setMessage("会读取最近一份备份，并把作品、趋势、记忆、策略、复盘、数据源和编辑记录恢复进去。再点一次确认恢复。");
+      setMessage("会读取最近一份备份，并把作品、本地创作资料、历史导入和编辑记录恢复进去。再点一次确认恢复。");
       return;
     }
 
@@ -96,7 +96,7 @@ export function BackupPanel() {
       setConfirmClearCache(false);
       setConfirmClearLogs(false);
       setConfirmReset(false);
-      setMessage("会先自动备份，再清理公开网页/CSV/截图/手动导入记录、验证作品、验证记忆、验证灵感模板和截图缓存。再点一次确认清理。");
+      setMessage("会先自动备份，再清理公开网页/CSV/截图/手动导入记录、验证作品、验证模板和截图缓存。再点一次确认清理。");
       return;
     }
 
@@ -123,7 +123,7 @@ export function BackupPanel() {
       setConfirmCleanup(false);
       setConfirmClearLogs(false);
       setConfirmReset(false);
-      setMessage("只会清理截图缓存、临时缓存和运行缓存，不会删除作品、备份、记忆和策略。再点一次确认清理。");
+      setMessage("只会清理截图缓存、临时缓存和运行缓存，不会删除作品和备份。再点一次确认清理。");
       return;
     }
 
@@ -149,7 +149,7 @@ export function BackupPanel() {
       setConfirmCleanup(false);
       setConfirmClearCache(false);
       setConfirmReset(false);
-      setMessage("只会清空本地日志目录，不会删除作品、备份、记忆和策略。再点一次确认清空。");
+      setMessage("只会清空本地日志目录，不会删除作品和备份。再点一次确认清空。");
       return;
     }
 
@@ -175,7 +175,7 @@ export function BackupPanel() {
       setConfirmCleanup(false);
       setConfirmClearCache(false);
       setConfirmClearLogs(false);
-      setMessage("会先自动备份，再把作品、趋势、记忆、灵感模板、复盘、标记、版本和数据源恢复到初始示例状态。再点一次确认重置。");
+      setMessage("会先自动备份，再把作品、本地创作资料和编辑记录恢复到初始示例状态。再点一次确认重置。");
       return;
     }
 
@@ -233,7 +233,7 @@ export function BackupPanel() {
             <p className="text-xs text-muted">最近备份</p>
             <p className="mt-1 break-all font-medium">{latest.fileName}</p>
             <p className="mt-2 text-xs text-muted">
-              大小约 {Math.ceil(latest.sizeBytes / 1024)} KB，包含 {latest.counts.works} 部作品、{latest.counts.trends} 条趋势、{latest.counts.memories} 条记忆、{latest.counts.strategies} 条策略、{latest.counts.knowledgeChunks} 条知识索引、{latest.counts.writingAssets} 条灵感/模板。
+              大小约 {Math.ceil(latest.sizeBytes / 1024)} KB，包含 {latest.counts.works} 部作品和本地创作资料。
             </p>
           </div>
         ) : null}
@@ -246,16 +246,16 @@ export function BackupPanel() {
             </div>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <Count label="作品" value={backup.counts.works} />
-              <Count label="趋势" value={backup.counts.trends} />
-              <Count label="记忆" value={backup.counts.memories} />
-              <Count label="策略" value={backup.counts.strategies} />
-              <Count label="知识索引" value={backup.counts.knowledgeChunks} />
+              <Count label="市场资料" value={backup.counts.trends} />
+              <Count label="创作规则" value={backup.counts.memories} />
+              <Count label="创作偏好" value={backup.counts.strategies} />
+              <Count label="资料索引" value={backup.counts.knowledgeChunks} />
               <Count label="灵感模板" value={backup.counts.writingAssets} />
-              <Count label="复盘" value={backup.counts.reviews} />
-              <Count label="数据源" value={backup.counts.datasources} />
-              <Count label="采集日志" value={backup.counts.crawlerJobs} />
-              <Count label="标记" value={backup.counts.marks} />
-              <Count label="版本" value={backup.counts.versions} />
+              <Count label="分析记录" value={backup.counts.reviews} />
+              <Count label="历史导入" value={backup.counts.datasources} />
+              <Count label="导入日志" value={backup.counts.crawlerJobs} />
+              <Count label="编辑记录" value={backup.counts.marks} />
+              <Count label="历史版本" value={backup.counts.versions} />
             </div>
           </div>
         ) : null}
@@ -269,12 +269,12 @@ export function BackupPanel() {
             <p className="break-all text-sm leading-6 text-muted">{restoreResult.path}</p>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <Count label="作品" value={restoreResult.counts.works} />
-              <Count label="趋势" value={restoreResult.counts.trends} />
-              <Count label="记忆" value={restoreResult.counts.memories} />
-              <Count label="策略" value={restoreResult.counts.strategies} />
-              <Count label="知识索引" value={restoreResult.counts.knowledgeChunks} />
+              <Count label="市场资料" value={restoreResult.counts.trends} />
+              <Count label="创作规则" value={restoreResult.counts.memories} />
+              <Count label="创作偏好" value={restoreResult.counts.strategies} />
+              <Count label="资料索引" value={restoreResult.counts.knowledgeChunks} />
               <Count label="灵感模板" value={restoreResult.counts.writingAssets} />
-              <Count label="复盘" value={restoreResult.counts.reviews} />
+              <Count label="分析记录" value={restoreResult.counts.reviews} />
             </div>
           </div>
         ) : null}
@@ -288,15 +288,15 @@ export function BackupPanel() {
             {cleanupResult.backupPath ? <p className="break-all text-sm leading-6 text-muted">{cleanupResult.backupPath}</p> : null}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <Count label="作品" value={cleanupResult.counts.works} />
-              <Count label="趋势" value={cleanupResult.counts.trends} />
-              <Count label="记忆" value={cleanupResult.counts.memories} />
-              <Count label="策略" value={cleanupResult.counts.strategies} />
-              <Count label="知识索引" value={cleanupResult.counts.knowledgeChunks} />
+              <Count label="市场资料" value={cleanupResult.counts.trends} />
+              <Count label="创作规则" value={cleanupResult.counts.memories} />
+              <Count label="创作偏好" value={cleanupResult.counts.strategies} />
+              <Count label="资料索引" value={cleanupResult.counts.knowledgeChunks} />
               <Count label="灵感模板" value={cleanupResult.counts.writingAssets} />
-              <Count label="复盘" value={cleanupResult.counts.reviews} />
-              <Count label="数据源" value={cleanupResult.counts.datasources} />
-              <Count label="采集日志" value={cleanupResult.counts.crawlerJobs} />
-              <Count label="标记" value={cleanupResult.counts.marks} />
+              <Count label="分析记录" value={cleanupResult.counts.reviews} />
+              <Count label="历史导入" value={cleanupResult.counts.datasources} />
+              <Count label="导入日志" value={cleanupResult.counts.crawlerJobs} />
+              <Count label="编辑记录" value={cleanupResult.counts.marks} />
               <Count label="截图" value={cleanupResult.counts.screenshots} />
             </div>
           </div>
@@ -330,17 +330,17 @@ export function BackupPanel() {
             {resetResult.backupPath ? <p className="break-all text-sm leading-6 text-muted">{resetResult.backupPath}</p> : null}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <Count label="清空作品" value={resetResult.counts.works} />
-              <Count label="清空趋势" value={resetResult.counts.trends} />
-              <Count label="清空记忆" value={resetResult.counts.memories} />
-              <Count label="清空策略" value={resetResult.counts.strategies} />
-              <Count label="清空知识索引" value={resetResult.counts.knowledgeChunks} />
+              <Count label="清空市场资料" value={resetResult.counts.trends} />
+              <Count label="清空创作规则" value={resetResult.counts.memories} />
+              <Count label="清空创作偏好" value={resetResult.counts.strategies} />
+              <Count label="清空资料索引" value={resetResult.counts.knowledgeChunks} />
               <Count label="清空灵感模板" value={resetResult.counts.writingAssets} />
-              <Count label="清空复盘" value={resetResult.counts.reviews} />
+              <Count label="清空分析记录" value={resetResult.counts.reviews} />
               <Count label="初始作品" value={resetResult.starterCounts.works} />
-              <Count label="初始趋势" value={resetResult.starterCounts.trends} />
-              <Count label="初始记忆" value={resetResult.starterCounts.memories} />
-              <Count label="初始策略" value={resetResult.starterCounts.strategies} />
-              <Count label="初始知识索引" value={resetResult.starterCounts.knowledgeChunks} />
+              <Count label="初始市场资料" value={resetResult.starterCounts.trends} />
+              <Count label="初始创作规则" value={resetResult.starterCounts.memories} />
+              <Count label="初始创作偏好" value={resetResult.starterCounts.strategies} />
+              <Count label="初始资料索引" value={resetResult.starterCounts.knowledgeChunks} />
               <Count label="截图" value={resetResult.counts.screenshots} />
             </div>
           </div>

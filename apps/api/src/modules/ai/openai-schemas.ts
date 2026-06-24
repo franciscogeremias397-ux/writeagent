@@ -293,6 +293,161 @@ export const storyPlanJsonSchema = {
   }
 } as const;
 
+export const fullDraftJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["title", "content", "genre", "tags", "summary", "marketSummary", "qualitySummary", "internalPlan", "revisionNotes"],
+  properties: {
+    title: { type: "string" },
+    content: { type: "string" },
+    genre: { type: "string" },
+    tags: {
+      type: "array",
+      items: { type: "string" }
+    },
+    summary: { type: "string" },
+    marketSummary: { type: "string" },
+    qualitySummary: { type: "string" },
+    internalPlan: { type: "string" },
+    revisionNotes: {
+      type: "array",
+      items: { type: "string" }
+    }
+  }
+} as const;
+
+export const storyOutlineJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["title", "direction", "outline", "highlights", "marketReason"],
+  properties: {
+    title: { type: "string" },
+    direction: { type: "string" },
+    outline: { type: "string" },
+    highlights: {
+      type: "array",
+      minItems: 2,
+      maxItems: 5,
+      items: { type: "string" }
+    },
+    marketReason: { type: "string" }
+  }
+} as const;
+
+export const fullDraftBlueprintJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["title", "genre", "tags", "summary", "marketSummary", "qualitySummary", "internalPlan", "sections"],
+  properties: {
+    title: { type: "string" },
+    genre: { type: "string" },
+    tags: {
+      type: "array",
+      items: { type: "string" }
+    },
+    summary: { type: "string" },
+    marketSummary: { type: "string" },
+    qualitySummary: { type: "string" },
+    internalPlan: { type: "string" },
+    sections: {
+      type: "array",
+      minItems: 1,
+      maxItems: 12,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "index",
+          "title",
+          "goal",
+          "context",
+          "openingHook",
+          "readerQuestion",
+          "conflictUpgrade",
+          "informationReveal",
+          "mustInclude",
+          "avoid",
+          "turningPoint",
+          "endingHook",
+          "wordTarget"
+        ],
+        properties: {
+          index: { type: "number" },
+          title: { type: "string" },
+          goal: { type: "string" },
+          context: { type: "string" },
+          openingHook: { type: "string" },
+          readerQuestion: { type: "string" },
+          conflictUpgrade: { type: "string" },
+          informationReveal: { type: "string" },
+          mustInclude: {
+            type: "array",
+            minItems: 3,
+            maxItems: 8,
+            items: { type: "string" }
+          },
+          avoid: {
+            type: "array",
+            minItems: 2,
+            maxItems: 8,
+            items: { type: "string" }
+          },
+          turningPoint: { type: "string" },
+          endingHook: { type: "string" },
+          wordTarget: { type: "number" }
+        }
+      }
+    }
+  }
+} as const;
+
+const fullDraftStoryStatePatchSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "currentSummary",
+    "completedEvents",
+    "revealedInformation",
+    "protagonistKnows",
+    "readerKnows",
+    "antagonistKnows",
+    "openForeshadows",
+    "resolvedForeshadows",
+    "characterStates",
+    "timeline",
+    "toneAndPacing",
+    "nextContinuityNotes"
+  ],
+  properties: {
+    currentSummary: { type: "string" },
+    completedEvents: { type: "array", items: { type: "string" } },
+    revealedInformation: { type: "array", items: { type: "string" } },
+    protagonistKnows: { type: "array", items: { type: "string" } },
+    readerKnows: { type: "array", items: { type: "string" } },
+    antagonistKnows: { type: "array", items: { type: "string" } },
+    openForeshadows: { type: "array", items: { type: "string" } },
+    resolvedForeshadows: { type: "array", items: { type: "string" } },
+    characterStates: { type: "array", items: { type: "string" } },
+    timeline: { type: "array", items: { type: "string" } },
+    toneAndPacing: { type: "string" },
+    nextContinuityNotes: { type: "array", items: { type: "string" } }
+  }
+} as const;
+
+export const fullDraftContinuityCheckJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["ok", "rewriteRequired", "issues", "continuityNotes", "suggestedFix", "statePatch"],
+  properties: {
+    ok: { type: "boolean" },
+    rewriteRequired: { type: "boolean" },
+    issues: { type: "array", items: { type: "string" } },
+    continuityNotes: { type: "array", items: { type: "string" } },
+    suggestedFix: { type: "string" },
+    statePatch: fullDraftStoryStatePatchSchema
+  }
+} as const;
+
 export const rewriteJsonSchema = {
   type: "object",
   additionalProperties: false,

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Activity, AlertTriangle, Brain, CheckCircle2, Clock3, Database, FileText, FolderOpen, HardDrive, Power, Server, ShieldCheck } from "lucide-react";
+import { Activity, AlertTriangle, Brain, CheckCircle2, Database, FileText, FolderOpen, HardDrive, Power, Server } from "lucide-react";
 import { Badge, Button, Card, CardHeader } from "@/components/ui";
 import { getSettings, testWritingWorkflow, type AiSettingsStatus, type WorkflowSmokeResult } from "@/lib/api";
 
@@ -12,7 +12,6 @@ export function RuntimeSettingsPanel() {
   const [workflowResult, setWorkflowResult] = useState<WorkflowSmokeResult | null>(null);
   const [workflowMessage, setWorkflowMessage] = useState("还没有检查写作主流程。");
   const [workflowLoading, setWorkflowLoading] = useState(false);
-  const crawlerSettings = settings?.crawlerSettings ?? fallbackCrawlerSettings;
   const runtimeHealth = settings?.runtimeHealth ?? fallbackRuntimeHealth;
   const launchStatus = settings?.launchEntries ?? fallbackLaunchEntries;
   const persistence = settings?.persistence ?? fallbackPersistenceStatus(runtimeHealth);
@@ -31,7 +30,7 @@ export function RuntimeSettingsPanel() {
 
   async function handleWorkflowCheck() {
     setWorkflowLoading(true);
-    setWorkflowMessage("正在检查自动写作、保存作品和复盘预览。");
+    setWorkflowMessage("正在检查全文生成、保存作品和编辑器读取。");
 
     try {
       const result = await testWritingWorkflow();
@@ -81,7 +80,7 @@ export function RuntimeSettingsPanel() {
       <Card>
         <CardHeader
           title="写作主流程检查"
-          eyebrow="自动写作、保存作品、复盘预览"
+          eyebrow="全文生成、保存作品、编辑器读取"
           action={
             <Button onClick={handleWorkflowCheck} disabled={workflowLoading}>
               <Activity size={16} />
@@ -171,47 +170,9 @@ export function RuntimeSettingsPanel() {
         </div>
       </Card>
 
-      <Card>
-        <CardHeader title="采集设置" />
-        <div className="grid gap-3 p-5">
-          <SettingLine icon={<Clock3 size={17} />} label="默认频率" value={crawlerSettings.defaultFrequency} />
-          <SettingLine icon={<Clock3 size={17} />} label="任务并发" value={`${crawlerSettings.concurrency} 个任务`} />
-          <SettingLine icon={<Clock3 size={17} />} label="超时时间" value={`${crawlerSettings.timeoutSeconds} 秒`} />
-          <SettingLine icon={<Clock3 size={17} />} label="定时任务" value={crawlerSettings.scheduledTasks ? "已开启" : "未开启"} />
-          <div className="rounded-md border border-line bg-white p-4">
-            <p className="text-sm font-medium">当前支持导入</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {crawlerSettings.enabledImports.map((item) => (
-                <Badge key={item}>{item}</Badge>
-              ))}
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      <Card>
-        <CardHeader title="采集边界" />
-        <div className="grid gap-3 p-5">
-          {crawlerSettings.boundaries.map((item) => (
-            <div key={item} className="flex items-center gap-3 rounded-md border border-line bg-white p-3">
-              <ShieldCheck size={17} />
-              <span className="text-sm">{item}</span>
-            </div>
-          ))}
-        </div>
-      </Card>
     </div>
   );
 }
-
-const fallbackCrawlerSettings: AiSettingsStatus["crawlerSettings"] = {
-  defaultFrequency: "手动触发",
-  concurrency: 1,
-  timeoutSeconds: 20,
-  scheduledTasks: false,
-  enabledImports: ["公开网页", "CSV", "平台文字粘贴", "截图自动识别/校正文字"],
-  boundaries: ["不绕过登录", "不绕过验证码", "不抓取未授权后台", "只处理公开页面或用户主动导入的数据"]
-};
 
 const fallbackRuntimeHealth: AiSettingsStatus["runtimeHealth"] = {
   database: {
@@ -227,7 +188,7 @@ const fallbackRuntimeHealth: AiSettingsStatus["runtimeHealth"] = {
   knowledge: {
     ok: false,
     label: "本地知识库",
-    detail: "正在检查写作记忆和个人策略索引。"
+    detail: "正在检查创作资料索引。"
   },
   storage: {
     ok: false,
@@ -270,7 +231,7 @@ const fallbackLaunchEntries: AiSettingsStatus["launchEntries"] = [
     path: "停止神笔马良.command",
     ok: false,
     executable: false,
-    detail: "停止网页服务和本地容器，不会删除作品、记忆和备份。",
+    detail: "停止网页服务和本地容器，不会删除作品和备份。",
   },
   {
     label: "体检",
@@ -291,9 +252,9 @@ function fallbackPersistenceStatus(runtimeHealth: AiSettingsStatus["runtimeHealt
     durable: databaseReady,
     fallbackActive: !databaseReady,
     detail: databaseReady
-      ? "作品、编辑标记、改稿版本、写作记忆、个人策略和复盘报告会优先保存到 PostgreSQL。"
+      ? "作品、正文、创作资料和本地配置会优先保存到 PostgreSQL。"
       : "正在确认数据库和本地文件目录；确认前，系统会保持本机保存优先。",
-    scope: ["作品", "编辑标记", "改稿版本", "写作记忆", "个人策略", "复盘报告"],
+    scope: ["作品", "正文", "创作资料", "本地配置", "备份"],
     paths: {
       storageDir: runtimeHealth.storage.path,
       workspaceDir: runtimeHealth.workspace.path,
@@ -321,14 +282,14 @@ function acceptanceItems(settings: AiSettingsStatus | null, runtimeHealth: AiSet
       detail: runtimeHealth.database.ok ? "PostgreSQL 可用，结构化数据会优先写入数据库。" : "当前会先使用本地文件兜底保存。"
     },
     {
-      label: "队列采集",
+      label: "后台任务",
       ok: runtimeHealth.redis.ok,
-      detail: runtimeHealth.redis.ok ? "Redis 可用，公开网页采集可进入本地队列。" : "Redis 不可用时仍可手动导入和直接采集。"
+      detail: runtimeHealth.redis.ok ? "Redis 可用，后台任务可以使用本地队列。" : "Redis 不可用时，生成任务会先使用进程内队列。"
     },
     {
       label: "知识库召回",
       ok: runtimeHealth.knowledge.ok,
-      detail: runtimeHealth.knowledge.ok ? "写作记忆和个人策略会优先走 pgvector 向量召回。" : "当前会先用本地轻量索引兜底。"
+      detail: runtimeHealth.knowledge.ok ? "创作资料会优先走本地向量索引。" : "当前会先用本地轻量索引兜底。"
     },
     {
       label: "真实 AI",
@@ -350,7 +311,7 @@ function buildAvailabilityStatus(settings: AiSettingsStatus | null, runtimeHealt
   if (pageReady && fileReady) {
     const fallbackParts = [
       runtimeHealth.database.ok ? "" : "数据库用本地文件兜底",
-      runtimeHealth.redis.ok ? "" : "队列采集可先手动导入",
+      runtimeHealth.redis.ok ? "" : "后台任务用进程内队列",
       settings?.hasApiKey ? "" : "写作先用本地模拟内核"
     ].filter(Boolean);
 
@@ -392,7 +353,7 @@ function PersistenceStatusCard({ persistence, isLoading }: { persistence: AiSett
 
   return (
     <Card>
-      <CardHeader title="保存状态" eyebrow="作品、标记、改稿、记忆、策略、复盘" action={<Badge className={badgeClassName}>{badgeText}</Badge>} />
+      <CardHeader title="保存状态" eyebrow="作品、正文、创作资料、本地配置" action={<Badge className={badgeClassName}>{badgeText}</Badge>} />
       <div className="grid gap-4 p-5 lg:grid-cols-[1.15fr_0.85fr]">
         <div className="grid gap-3 rounded-md border border-line bg-paper p-4">
           <div className="flex items-center gap-2 text-sm font-semibold text-ink">

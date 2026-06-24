@@ -1,5 +1,5 @@
-import { Body, Controller, Inject, Post } from "@nestjs/common";
-import type { GeneratePlanInput, ReviseSceneDraftInput } from "@shenbi/shared";
+import { Body, Controller, GoneException, Inject, Post } from "@nestjs/common";
+import type { ReviseSceneDraftInput } from "@shenbi/shared";
 import { WritingWorkflowService } from "./writing-workflow.service.js";
 
 type RewriteBody = {
@@ -13,13 +13,13 @@ export class WritingController {
   constructor(@Inject(WritingWorkflowService) private readonly writingWorkflow: WritingWorkflowService) {}
 
   @Post("inspiration")
-  createFromInspiration(@Body() body: GeneratePlanInput) {
-    return this.writingWorkflow.createFromInspiration(body);
+  createFromInspiration() {
+    throw new GoneException("旧版灵感写作接口已停用，请使用 /api/generate/full-draft。");
   }
 
   @Post("auto")
-  createFromParameters(@Body() body: GeneratePlanInput) {
-    return this.writingWorkflow.createFromParameters(body);
+  createFromParameters() {
+    throw new GoneException("旧版自动写作接口已停用，请使用 /api/generate/full-draft。");
   }
 
   @Post("rewrite-mark")

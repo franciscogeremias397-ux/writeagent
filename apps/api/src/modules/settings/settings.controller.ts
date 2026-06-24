@@ -1,16 +1,15 @@
 import { Body, Controller, Get, Inject, Patch, Post, Query } from "@nestjs/common";
-import { validateStoryWorkflow, type AiProviderMode } from "@shenbi/shared";
+import { type AiProviderMode } from "@shenbi/shared";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
 import { AiProviderService } from "../ai/ai-provider.service.js";
 import { BackupsService } from "../backups/backups.service.js";
 import { PrismaService } from "../database/prisma.service.js";
+import { GenerateService } from "../generate/generate.service.js";
 import { KnowledgeService } from "../knowledge/knowledge.service.js";
 import { MemoryService } from "../memory/memory.service.js";
-import { ReviewService } from "../review/review.service.js";
 import { WorksService } from "../works/works.service.js";
-import { WritingWorkflowService } from "../writing/writing-workflow.service.js";
 
 type DirectoryHealth = {
   ok: boolean;
@@ -54,12 +53,14 @@ type UpdateSettingsBody = {
   aiProvider?: string;
   apiKey?: string;
   textModel?: string;
+  outlineModel?: string;
   baseUrl?: string;
   openAiApiKey?: string;
   openAiTextModel?: string;
   openAiEmbeddingModel?: string;
   kimiApiKey?: string;
   kimiTextModel?: string;
+  kimiOutlineModel?: string;
   kimiBaseUrl?: string;
   deepSeekApiKey?: string;
   deepSeekTextModel?: string;
@@ -93,13 +94,13 @@ type AiKernelTestResult = {
   title: string;
   detail: string;
   providerNotice?: string;
-  counts: {
-    topicCards: number;
-    sceneCards: number;
-    scenePrompts: number;
-    sceneDrafts: number;
+  draft: {
+    wordCount: number;
+    genre: string;
+    tags: string[];
+    marketSummary: string;
+    qualitySummary: string;
   };
-  sampleClues: string[];
   nextStep?: string;
 };
 
@@ -109,11 +110,10 @@ export class SettingsController {
     @Inject(AiProviderService) private readonly aiProvider: AiProviderService,
     @Inject(BackupsService) private readonly backupsService: BackupsService,
     @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(GenerateService) private readonly generateService: GenerateService,
     @Inject(KnowledgeService) private readonly knowledgeService: KnowledgeService,
     @Inject(WorksService) private readonly worksService: WorksService,
-    @Inject(ReviewService) private readonly reviewService: ReviewService,
-    @Inject(MemoryService) private readonly memoryService: MemoryService,
-    @Inject(WritingWorkflowService) private readonly writingWorkflow: WritingWorkflowService
+    @Inject(MemoryService) private readonly memoryService: MemoryService
   ) {}
 
   @Get()
@@ -165,12 +165,17 @@ export class SettingsController {
     const aiProvider = this.normalizeAiProvider(this.cleanText(body.aiProvider) || process.env.AI_PROVIDER || "openai");
     const providerInfo = this.aiProviderInfo(aiProvider);
     const textModel = this.providerTextModelFromBody(aiProvider, body) || process.env[providerInfo.textModelEnv] || providerInfo.defaultTextModel;
+    const outlineModel =
+      this.providerOutlineModelFromBody(aiProvider, body) ||
+      (providerInfo.outlineModelEnv ? process.env[providerInfo.outlineModelEnv] : "") ||
+      providerInfo.defaultOutlineModel ||
+      textModel;
     const baseUrl = this.providerBaseUrlFromBody(aiProvider, body) || process.env[providerInfo.baseUrlEnv] || providerInfo.defaultBaseUrl;
     const openAiEmbeddingModel = this.cleanText(body.openAiEmbeddingModel) || process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small";
     const shouldClearKey = Boolean(body.clearApiKey || (body.clearOpenAiApiKey && aiProvider === "openai"));
     const providedApiKey = this.providerApiKeyFromBody(aiProvider, body);
     const nextApiKey = shouldClearKey ? "" : providedApiKey || process.env[providerInfo.apiKeyEnv] || "";
-    const previewStatus = this.buildAiStatus(providerInfo, textModel, baseUrl, openAiEmbeddingModel, Boolean(nextApiKey));
+    const previewStatus = this.buildAiStatus(providerInfo, textModel, outlineModel, baseUrl, openAiEmbeddingModel, Boolean(nextApiKey));
 
     if (body.dryRun) {
       return {
@@ -186,6 +191,10 @@ export class SettingsController {
     process.env[providerInfo.textModelEnv] = textModel;
     process.env[providerInfo.baseUrlEnv] = baseUrl;
 
+    if (providerInfo.outlineModelEnv) {
+      process.env[providerInfo.outlineModelEnv] = outlineModel;
+    }
+
     if (aiProvider === "openai") {
       process.env.OPENAI_EMBEDDING_MODEL = openAiEmbeddingModel;
     }
@@ -199,6 +208,7 @@ export class SettingsController {
     await this.writeLocalEnv({
       AI_PROVIDER: aiProvider,
       [providerInfo.textModelEnv]: textModel,
+      ...(providerInfo.outlineModelEnv ? { [providerInfo.outlineModelEnv]: outlineModel } : {}),
       [providerInfo.baseUrlEnv]: baseUrl,
       ...(aiProvider === "openai" ? { OPENAI_EMBEDDING_MODEL: openAiEmbeddingModel } : {}),
       [providerInfo.apiKeyEnv]: process.env[providerInfo.apiKeyEnv]
@@ -221,72 +231,67 @@ export class SettingsController {
   @Post("test-ai-kernel")
   async testAiKernel(): Promise<AiKernelTestResult> {
     try {
-      const plan = await this.aiProvider.generateStoryPlan({
-        platform: "番茄短故事",
-        genre: "悬疑惊悚",
-        length: "8000 字",
-        emotion: "反转",
-        protagonist: "夜班档案员",
-        ending: "逆袭成功",
-        style: "现实质感",
-        mode: "快速生成",
+      const draft = await this.aiProvider.generateFullDraft({
+        mode: "inspiration",
+        targetPlatform: "fanqie",
+        targetLength: "8000",
+        optionalDirection: "悬疑反转",
         inspiration: "设置中心测试用：旧小区夜里响起第三声敲门，但监控里没有人。"
       });
-      const validation = validateStoryWorkflow(plan);
+      const wordCount = this.countReadableText(draft.content);
+      const ok = wordCount >= 500 && Boolean(draft.title.trim());
 
-      if (!validation.ok) {
+      if (!ok) {
         return {
           ok: false,
-          providerMode: plan.providerMode ?? "mock",
-          title: plan.title,
-          detail: `写作内核返回内容不完整：${validation.problems.join("；")}`,
-          providerNotice: plan.providerNotice,
-          counts: {
-            topicCards: plan.topicCards.length,
-            sceneCards: plan.sceneCards.length,
-            scenePrompts: plan.scenePrompts.length,
-            sceneDrafts: plan.sceneDrafts.length
+          providerMode: draft.providerMode ?? "mock",
+          title: draft.title,
+          detail: "全文生成测试返回内容过短，还不能作为可编辑正文。",
+          providerNotice: draft.providerNotice,
+          draft: {
+            wordCount,
+            genre: draft.genre,
+            tags: draft.tags,
+            marketSummary: draft.marketSummary,
+            qualitySummary: draft.qualitySummary
           },
-          sampleClues: this.sampleClues(plan),
-          nextStep: "可以继续使用本地模拟内核；如果你刚配置了真实 AI，请检查模型名和 API Key。"
+          nextStep: "可以先使用首页生成验证；如果真实模型反复返回过短，请检查模型名或切换供应商。"
         };
       }
 
-      const providerMode = plan.providerMode ?? "mock";
+      const providerMode = draft.providerMode ?? "mock";
 
       return {
         ok: true,
         providerMode,
-        title: plan.title,
+        title: draft.title,
         detail:
-          providerMode !== "mock" && providerMode !== "fallback"
-            ? `${this.providerModeLabel(providerMode)} 写作内核已跑通，并且十步写作结构完整。`
-            : providerMode === "fallback"
-              ? "真实 AI 暂时没有返回可用结果，但系统已自动切回本地写作内核，十步结构仍然完整。"
-              : "本地模拟写作内核已跑通；没有配置 API Key 时也可以继续创作和保存。",
-        providerNotice: plan.providerNotice,
-        counts: {
-          topicCards: plan.topicCards.length,
-          sceneCards: plan.sceneCards.length,
-          scenePrompts: plan.scenePrompts.length,
-          sceneDrafts: plan.sceneDrafts.length
+          providerMode === "kimi"
+            ? `${this.providerModeLabel(providerMode)} 全文生成已跑通，可以从首页生成后进入编辑器。`
+            : "全文生成测试没有跑通正式正文路由；正式正文必须由 Kimi 生成。",
+        providerNotice: draft.providerNotice,
+        draft: {
+          wordCount,
+          genre: draft.genre,
+          tags: draft.tags,
+          marketSummary: draft.marketSummary,
+          qualitySummary: draft.qualitySummary
         },
-        sampleClues: this.sampleClues(plan),
-        nextStep: providerMode === "mock" ? "需要真实 AI 时，在这里选择 Kimi、DeepSeek 或 OpenAI，填入对应 API Key 后再测试。" : undefined
+        nextStep: providerMode === "kimi" ? undefined : "请先配置 Kimi API Key 和 Kimi K2.6 模型，再测试全文生成。"
       };
     } catch (error) {
       return {
         ok: false,
         providerMode: "fallback",
-        title: "写作内核测试",
-        detail: `写作内核测试没有跑通：${this.errorMessage(error)}`,
-        counts: {
-          topicCards: 0,
-          sceneCards: 0,
-          scenePrompts: 0,
-          sceneDrafts: 0
+        title: "全文生成测试",
+        detail: `全文生成测试没有跑通：${this.errorMessage(error)}`,
+        draft: {
+          wordCount: 0,
+          genre: "未知",
+          tags: [],
+          marketSummary: "",
+          qualitySummary: ""
         },
-        sampleClues: [],
         nextStep: "先刷新设置中心；如果仍失败，把这段结果发给我。"
       };
     }
@@ -301,67 +306,57 @@ export class SettingsController {
     let nextStep: string | undefined;
 
     try {
-      const plan = await this.writingWorkflow.createFromParameters({
-        platform: "番茄短故事",
-        genre: "女性成长",
-        length: "8000 字",
-        emotion: "爽",
-        protagonist: "县城女性",
-        ending: "逆袭成功",
-        style: "现实质感",
-        mode: "步步确认",
-        inspiration: "主流程检查用：县城女孩发现家人隐瞒缴费单真相，用克制方式完成反击。"
+      const startedJob = this.generateService.startFullDraftJob({
+        mode: "autopilot",
+        targetPlatform: "fanqie",
+        targetLength: "8000",
+        optionalDirection: "现实情感",
+        avoid: ["不要输出过程结构"]
       });
-      const validation = validateStoryWorkflow(plan);
 
-      if (!validation.ok) {
-        throw new Error(`写作方案不完整：${validation.problems.join("；")}`);
+      steps.push({
+        label: "创建生成任务",
+        ok: true,
+        detail: `已创建任务 ${startedJob.jobId}，当前进度 ${startedJob.progress}%。`
+      });
+
+      const completedJob = await this.waitForGenerateJob(startedJob.jobId);
+
+      if (completedJob.status !== "completed" || !completedJob.result) {
+        throw new Error(completedJob.error || "生成任务没有返回作品。");
       }
 
+      workId = completedJob.result.workId;
       steps.push({
-        label: "自动写作",
-        ok: true,
-        detail: `已走真实自动写作链路，生成 ${plan.topicCards.length} 张选题卡、${plan.sceneCards.length} 张场景卡、${plan.sceneDrafts.length} 段分场正文。`
-      });
-
-      steps.push({
-        label: "记忆策略召回",
-        ok: true,
-        detail: plan.memoryUsed?.length
-          ? `本次写作已读取 ${plan.memoryUsed.length} 条写作记忆/个人策略。`
-          : "当前没有匹配到可用的写作记忆或个人策略，仍可正常生成。"
-      });
-
-      const saved = await this.worksService.savePlan({
-        ...plan,
-        title: `主流程检查-${Date.now()}`
-      });
-
-      workId = saved.work.id;
-      steps.push({
-        label: "保存作品",
+        label: "全文生成与保存",
         ok: Boolean(workId),
-        detail: `${saved.message} 保存方式：${saved.persisted ? "数据库持久化" : "本地文件兜底"}。作品 ID：${workId}。`
+        detail: `已生成《${completedJob.result.title}》。供应商：${this.providerModeLabel(completedJob.result.providerMode)}。保存方式：${completedJob.result.persisted ? "数据库持久化" : "本地文件兜底"}。作品 ID：${workId}。`
       });
 
       if (!workId) {
         throw new Error("作品保存接口没有返回作品 ID。");
       }
 
-      const review = await this.reviewService.getReview(workId);
+      const loaded = await this.worksService.getWork(workId);
 
-      if (!review.performanceSummary || !review.contentDiagnostics?.length) {
-        throw new Error("复盘接口没有返回完整的内容诊断。");
+      if (!loaded.fullText?.trim()) {
+        throw new Error("作品读取接口没有返回正文，编辑器无法打开。");
+      }
+
+      const wordCount = this.countReadableText(loaded.fullText);
+
+      if (wordCount < 500) {
+        throw new Error("全文生成结果过短，无法进入可编辑正文。");
       }
 
       steps.push({
-        label: "复盘预览",
+        label: "编辑器读取",
         ok: true,
-        detail: `已返回 ${review.contentDiagnostics.length} 个内容诊断项。`
+        detail: `编辑器可通过 /editor?workId=${workId} 读取这篇正文，约 ${wordCount} 字。`
       });
 
       ok = true;
-      summary = "主流程可以跑通：自动写作、保存作品、复盘预览都正常。";
+      summary = "主流程可以跑通：全文生成、保存作品、编辑器读取都正常。";
     } catch (error) {
       const message = this.errorMessage(error);
       steps.push({
@@ -386,6 +381,22 @@ export class SettingsController {
       },
       nextStep
     };
+  }
+
+  private async waitForGenerateJob(jobId: string, timeoutMs = 180000) {
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < timeoutMs) {
+      const job = await this.generateService.getFullDraftJob(jobId);
+
+      if (job.status === "completed" || job.status === "failed") {
+        return job;
+      }
+
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 800));
+    }
+
+    throw new Error("生成任务等待超时，请稍后从首页重试。");
   }
 
   @Post("export-data")
@@ -440,10 +451,6 @@ export class SettingsController {
     }
 
     return { steps, deletedMemories };
-  }
-
-  private sampleClues(plan: { sceneCards: Array<{ relatedForeshadows: string[] }> }) {
-    return Array.from(new Set(plan.sceneCards.flatMap((scene) => scene.relatedForeshadows).filter(Boolean))).slice(0, 6);
   }
 
   @Post("clear-cache")
@@ -784,6 +791,10 @@ export class SettingsController {
     return value?.trim() ?? "";
   }
 
+  private countReadableText(value: string) {
+    return value.replace(/\s+/g, "").length;
+  }
+
   private errorMessage(error: unknown) {
     return error instanceof Error ? error.message : "未知错误";
   }
@@ -791,6 +802,7 @@ export class SettingsController {
   private buildAiStatus(
     provider: ReturnType<AiProviderService["listProviders"]>[number],
     model: string,
+    outlineModel: string,
     baseUrl: string,
     embeddingModel: string,
     hasApiKey: boolean
@@ -800,11 +812,16 @@ export class SettingsController {
       providerLabel: provider.label,
       mode: hasApiKey ? provider.id : "mock",
       model,
+      outlineModel: provider.id === "kimi" ? outlineModel : model,
       baseUrl,
       embeddingModel: provider.id === "openai" ? embeddingModel : "本地轻量索引",
       hasApiKey,
       apiKeyEnv: provider.apiKeyEnv,
-      message: hasApiKey ? `已配置 ${provider.label} API Key，写作接口会优先尝试真实 AI。` : "还没有配置 API Key，写作接口会使用本地模拟内核。"
+      message: hasApiKey
+        ? provider.id === "kimi"
+          ? `已配置 Kimi API Key，故事方案使用 ${outlineModel}，全文正文由 ${model} 主笔。`
+          : `已配置 ${provider.label} API Key；正式正文仍需要 Kimi，${provider.label} 只做后台辅助。`
+        : "还没有配置 API Key；故事方案可用本地临时方案，但正式全文不会保存本地替代正文。"
     };
   }
 
@@ -830,6 +847,14 @@ export class SettingsController {
     }
 
     return this.cleanText(body.textModel) || this.cleanText(body.deepSeekTextModel);
+  }
+
+  private providerOutlineModelFromBody(providerId: "openai" | "kimi" | "deepseek", body: UpdateSettingsBody) {
+    if (providerId === "kimi") {
+      return this.cleanText(body.outlineModel) || this.cleanText(body.kimiOutlineModel);
+    }
+
+    return this.cleanText(body.outlineModel);
   }
 
   private providerBaseUrlFromBody(providerId: "openai" | "kimi" | "deepseek", body: UpdateSettingsBody) {

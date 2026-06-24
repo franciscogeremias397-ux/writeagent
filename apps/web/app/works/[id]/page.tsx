@@ -1,5 +1,5 @@
-import { WorkDetailWorkspace } from "@/components/work-detail-workspace";
+import { redirect } from "next/navigation";
 
 export default function Page({ params }: { params: { id: string } }) {
-  return <WorkDetailWorkspace workId={decodeURIComponent(params.id)} />;
+  redirect(`/editor?workId=${encodeURIComponent(params.id)}`);
 }

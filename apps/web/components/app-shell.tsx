@@ -3,133 +3,74 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import {
-  BarChart3,
-  BookOpen,
-  Brain,
-  Database,
-  Feather,
-  Home,
-  LayoutDashboard,
-  Library,
-  Lightbulb,
-  PenLine,
-  Settings,
-  Sparkles
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import { works as fallbackWorks } from "@shenbi/shared";
-import { Progress } from "@/components/ui";
+import { BookOpen, Settings } from "lucide-react";
+import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
-import { getWorks } from "@/lib/api";
-import { buildWeeklyWritingProgress } from "@/lib/writing-progress";
 
-const navItems: Array<{ title: string; href: string; icon: LucideIcon }> = [
-  { title: "首页", href: "/", icon: Home },
-  { title: "灵感写作", href: "/inspiration", icon: Lightbulb },
-  { title: "自动写作", href: "/auto", icon: Feather },
-  { title: "风向标", href: "/trends", icon: Sparkles },
-  { title: "作品专栏", href: "/works", icon: Library },
-  { title: "正文编辑器", href: "/editor", icon: PenLine },
-  { title: "数据看板", href: "/dashboard", icon: BarChart3 },
-  { title: "复盘分析", href: "/review", icon: LayoutDashboard },
-  { title: "写作记忆库", href: "/memory", icon: Brain },
-  { title: "数据源管理", href: "/sources", icon: Database },
-  { title: "设置中心", href: "/settings", icon: Settings }
+const navItems = [
+  { title: "写作", href: "/" },
+  { title: "作品", href: "/works" },
+  { title: "设置", href: "/settings" }
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const [works, setWorks] = useState(fallbackWorks);
-  const weeklyProgress = useMemo(() => buildWeeklyWritingProgress(works), [works]);
-
-  useEffect(() => {
-    getWorks()
-      .then((result) => setWorks(result))
-      .catch(() => undefined);
-  }, []);
 
   return (
-    <div className="app-shell grid min-h-screen grid-cols-[264px_1fr] overflow-x-hidden bg-paper">
-      <aside className="app-sidebar flex h-screen min-w-0 flex-col overflow-hidden border-r border-line bg-white px-4 py-5">
-        <Link href="/" className="mb-7 flex items-center gap-3">
-          <Image src="/assets/logo.png" alt="神笔马良" width={42} height={42} className="rounded-md" priority />
-          <div>
-            <p className="text-sm font-semibold leading-tight">神笔马良短篇小说</p>
-            <p className="text-xs text-muted">Agent</p>
-          </div>
-        </Link>
-
-        <nav className="app-nav grid min-w-0 gap-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const active = isActivePath(pathname, item.href);
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex h-10 items-center gap-3 rounded-md px-3 text-sm transition hover:bg-paper hover:text-ink",
-                  active ? "bg-ink text-white hover:bg-ink hover:text-white" : "text-muted"
-                )}
-              >
-                <Icon size={17} strokeWidth={1.8} />
-                {item.title}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="mt-auto rounded-lg border border-line bg-paper p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <span className="text-sm font-medium">本周创作进度</span>
-            <span className="text-sm text-muted">{weeklyProgress.progress}%</span>
-          </div>
-          <Progress value={weeklyProgress.progress} />
-          <p className="mt-3 text-xs leading-5 text-muted">{weeklyProgress.label}</p>
-          <Link
-            href={weeklyProgress.href}
-            className="mt-4 inline-flex h-9 w-full items-center justify-center rounded-md bg-ink text-sm font-medium text-white"
-          >
-            {weeklyProgress.action}
+    <div className="min-h-screen bg-paper">
+      <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+          <Link href="/" className="flex min-w-0 items-center gap-3">
+            <Image src="/assets/logo.png" alt="神笔马良" width={34} height={34} className="h-8 w-8 rounded-md object-cover" priority />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-ink">神笔马良</p>
+              <p className="truncate text-xs text-muted">短篇小说 Agent</p>
+            </div>
           </Link>
-        </div>
-      </aside>
 
-      <main className="min-w-0 overflow-x-hidden">
-        <header className="flex h-16 items-center justify-between border-b border-line bg-paper/90 px-4 sm:px-8">
-          <div className="flex items-center gap-2 text-sm text-muted">
-            <BookOpen size={16} />
-            本地运行版
-          </div>
-          <div className="flex items-center gap-3">
+          <nav className="flex items-center gap-1 rounded-lg border border-line bg-white p-1" aria-label="主导航">
+            {navItems.map((item) => {
+              const active = isActivePath(pathname, item.href);
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-medium transition",
+                    active ? "bg-ink text-white" : "text-muted hover:bg-paper hover:text-ink"
+                  )}
+                >
+                  {item.title}
+                </Link>
+              );
+            })}
+          </nav>
+
+          <div className="hidden items-center gap-2 text-xs text-muted sm:flex">
+            <BookOpen size={15} />
+            <span>本地运行</span>
             <Link
               href="/settings"
-              aria-label="打开设置中心"
-              title="设置中心"
-              className="grid h-9 w-9 place-items-center rounded-md border border-line bg-white text-muted transition hover:border-ink hover:text-ink"
+              aria-label="打开设置"
+              title="设置"
+              className="ml-2 grid h-9 w-9 place-items-center rounded-md border border-line bg-white text-muted transition hover:border-ink hover:text-ink"
             >
               <Settings size={16} />
             </Link>
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-ink text-sm font-semibold text-white">马</div>
           </div>
-        </header>
-        <div className="px-4 py-5 sm:px-8 sm:py-7">{children}</div>
-      </main>
+        </div>
+      </header>
+
+      <div className="px-4 sm:px-6">{children}</div>
     </div>
   );
 }
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") {
-    return pathname === "/";
-  }
-
-  if (href === "/sources") {
-    return pathname.startsWith("/sources") || pathname.startsWith("/datasources");
+    return pathname === "/" || pathname === "/auto" || pathname === "/inspiration";
   }
 
   return pathname === href || pathname.startsWith(`${href}/`);

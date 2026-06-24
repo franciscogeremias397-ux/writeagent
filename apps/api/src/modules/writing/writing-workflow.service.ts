@@ -1,6 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { GeneratePlanInput, PersonalStrategy, ReviseSceneDraftInput, WritingMemory } from "@shenbi/shared";
-import { AiProviderService } from "../ai/ai-provider.service.js";
+import type { FullDraftInput, GeneratePlanInput, PersonalStrategy, ReviseSceneDraftInput, StoryOutlineInput, WritingMemory } from "@shenbi/shared";
+import { AiProviderService, type FullDraftGenerationOptions } from "../ai/ai-provider.service.js";
 import { KnowledgeService, type KnowledgeMatch } from "../knowledge/knowledge.service.js";
 import { MemoryService } from "../memory/memory.service.js";
 import { StrategiesService } from "../strategies/strategies.service.js";
@@ -46,6 +46,49 @@ export class WritingWorkflowService {
 
   async createFromParameters(input: GeneratePlanInput) {
     return this.aiProvider.generateStoryPlan(await this.withLearningHints(input));
+  }
+
+  async createFullDraft(input: FullDraftInput, options: FullDraftGenerationOptions = {}) {
+    const learningInput = await this.withLearningHints({
+      inspiration: input.inspiration,
+      platform: input.targetPlatform || "番茄",
+      genre: input.optionalDirection || "自动判断",
+      length: input.targetLength,
+      mode: input.mode
+    });
+
+    return this.aiProvider.generateFullDraft(
+      {
+        ...input,
+        memoryHints: learningInput.memoryHints?.map((memory) =>
+          [memory.genre, memory.rule, memory.matchReason ? `匹配原因：${memory.matchReason}` : ""].filter(Boolean).join(" | ")
+        ),
+        strategyHints: learningInput.strategyHints?.map((strategy) =>
+          [strategy.genre, strategy.rule, strategy.action, strategy.matchReason ? `匹配原因：${strategy.matchReason}` : ""].filter(Boolean).join(" | ")
+        )
+      },
+      options
+    );
+  }
+
+  async createStoryOutline(input: StoryOutlineInput) {
+    const learningInput = await this.withLearningHints({
+      inspiration: input.inspiration,
+      platform: input.targetPlatform || "番茄",
+      genre: input.optionalDirection || "自动判断",
+      length: input.targetLength,
+      mode: input.mode
+    });
+
+    return this.aiProvider.generateStoryOutline({
+      ...input,
+      memoryHints: learningInput.memoryHints?.map((memory) =>
+        [memory.genre, memory.rule, memory.matchReason ? `匹配原因：${memory.matchReason}` : ""].filter(Boolean).join(" | ")
+      ),
+      strategyHints: learningInput.strategyHints?.map((strategy) =>
+        [strategy.genre, strategy.rule, strategy.action, strategy.matchReason ? `匹配原因：${strategy.matchReason}` : ""].filter(Boolean).join(" | ")
+      )
+    });
   }
 
   rewriteMark(input: RewriteBody) {

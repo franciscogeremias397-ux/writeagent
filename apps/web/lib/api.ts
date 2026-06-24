@@ -3,35 +3,20 @@ import type {
   BackupListItem,
   BackupRestoreResult,
   ApplyRewriteResult,
-  AuthorizedCaptureResult,
-  BrowserCaptureExecutorResult,
-  BrowserCaptureSessionResult,
-  CrawlerJobRecord,
-  CsvImportResult,
-  DatasourceRecord,
-  DatasourceType,
   EditorMarkRecord,
   EditorVersionRecord,
-  GeneratePlanInput,
+  FullDraftInput,
+  FullDraftJobSnapshot,
   AiProviderMode,
   LocalCleanupResult,
   LocalMaintenanceResult,
   LocalResetResult,
   MarkType,
-  PersonalStrategy,
-  ReviseSceneDraftInput,
-  ReviewReportResult,
   RewriteSuggestion,
-  SceneDraftRevision,
-  ScreenshotImportResult,
-  AutoWritingPreset,
-  SavedInspiration,
+  StoryOutlineInput,
+  StoryOutlineResult,
   StoryPlan,
-  Trend,
-  Work,
-  WorkspaceExportResult,
-  WritingAssetLibrary,
-  WritingMemory
+  Work
 } from "@shenbi/shared";
 
 const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "/backend";
@@ -94,36 +79,24 @@ async function patchJson<T>(path: string, body: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function createStoryFromInspiration(input: GeneratePlanInput) {
-  return postJson<StoryPlan>("/api/writing/inspiration", input);
+export function startFullDraftJob(input: FullDraftInput) {
+  return postJson<FullDraftJobSnapshot>("/api/generate/full-draft", input);
 }
 
-export function createStoryFromAuto(input: GeneratePlanInput) {
-  return postJson<StoryPlan>("/api/writing/auto", input);
+export function createStoryOutline(input: StoryOutlineInput) {
+  return postJson<StoryOutlineResult>("/api/generate/story-outline", input);
+}
+
+export function getFullDraftJob(jobId: string) {
+  return getJson<FullDraftJobSnapshot>(`/api/generate/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export function resumeFullDraftJob(jobId: string) {
+  return postJson<FullDraftJobSnapshot>(`/api/generate/jobs/${encodeURIComponent(jobId)}/resume`, {});
 }
 
 export function createRewriteSuggestion(input: { markId: string; selectedText: string; feedback: string }) {
   return postJson<RewriteSuggestion>("/api/writing/rewrite-mark", input);
-}
-
-export function reviseSceneDraft(input: ReviseSceneDraftInput) {
-  return postJson<SceneDraftRevision>("/api/writing/revise-scene", input);
-}
-
-export function getWritingAssets() {
-  return getJson<WritingAssetLibrary>("/api/writing-assets");
-}
-
-export function saveInspirationAsset(input: Omit<SavedInspiration, "id" | "createdAt" | "updatedAt">) {
-  return postJson<{ inspiration: SavedInspiration; message: string }>("/api/writing-assets/inspirations", input);
-}
-
-export function saveAutoPreset(input: Omit<AutoWritingPreset, "id" | "createdAt" | "updatedAt">) {
-  return postJson<{ preset: AutoWritingPreset; message: string }>("/api/writing-assets/presets", input);
-}
-
-export function deleteWritingAsset(id: string) {
-  return deleteJson<{ id: string; removed: boolean; message: string }>(`/api/writing-assets/${encodeURIComponent(id)}`);
 }
 
 export function getWorks() {
@@ -162,40 +135,8 @@ export function deleteWork(workId: string) {
   return deleteJson<{ persisted: boolean; deleted: boolean; message: string }>(`/api/works/${encodeURIComponent(workId)}`);
 }
 
-export function getTrends() {
-  return getJson<Trend[]>("/api/trends");
-}
-
-export function saveStoryPlan(plan: StoryPlan) {
-  return postJson<{ persisted: boolean; work: Work; message: string; initialEditorMarks?: EditorMarkRecord[]; workspaceExport?: WorkspaceExportResult }>("/api/works/from-plan", plan);
-}
-
-export function exportWorkWorkspace(workId: string) {
-  return postJson<WorkspaceExportResult & { preview?: StoryPlan }>(`/api/works/${workId}/export-workspace`, {});
-}
-
 export function saveWorkFullText(workId: string, fullText: string, storyPlan?: StoryPlan) {
   return postJson<{ persisted: boolean; work: Work; message: string }>(`/api/works/${encodeURIComponent(workId)}/full-text`, { fullText, storyPlan });
-}
-
-export function getReviewReport(workId: string) {
-  return getJson<ReviewReportResult>(`/api/review/work/${workId}`);
-}
-
-export function createReviewReport(
-  workId: string,
-  input?: {
-    readCount?: number;
-    subscriptionCount?: number;
-    revenue?: number;
-    completionRate?: number;
-    rankingChange?: string;
-    recommendationChange?: string;
-    commentFeedback?: string;
-    commentKeywords?: string[] | string;
-  }
-) {
-  return postJson<ReviewReportResult>(`/api/review/work/${workId}`, input ?? {});
 }
 
 export function getEditorMarks(workId: string) {
@@ -244,9 +185,11 @@ export type AiSettingsStatus = {
     id: "openai" | "kimi" | "deepseek";
     label: string;
     defaultTextModel: string;
+    defaultOutlineModel?: string;
     defaultBaseUrl: string;
     apiKeyEnv: string;
     textModelEnv: string;
+    outlineModelEnv?: string;
     baseUrlEnv: string;
     supportsVision: boolean;
   }>;
@@ -323,19 +266,12 @@ export type AiSettingsStatus = {
       nextStep?: string;
     };
   };
-  crawlerSettings: {
-    defaultFrequency: string;
-    concurrency: number;
-    timeoutSeconds: number;
-    scheduledTasks: boolean;
-    enabledImports: string[];
-    boundaries: string[];
-  };
   aiStatus: {
     provider: string;
     providerLabel: string;
     mode: Exclude<AiProviderMode, "fallback">;
     model: string;
+    outlineModel?: string;
     baseUrl: string;
     embeddingModel: string;
     hasApiKey: boolean;
@@ -352,12 +288,14 @@ export function saveAiSettings(input: {
   aiProvider?: string;
   apiKey?: string;
   textModel?: string;
+  outlineModel?: string;
   baseUrl?: string;
   openAiTextModel?: string;
   openAiEmbeddingModel?: string;
   openAiApiKey?: string;
   kimiApiKey?: string;
   kimiTextModel?: string;
+  kimiOutlineModel?: string;
   kimiBaseUrl?: string;
   deepSeekApiKey?: string;
   deepSeekTextModel?: string;
@@ -388,13 +326,13 @@ export type AiKernelTestResult = {
   title: string;
   detail: string;
   providerNotice?: string;
-  counts: {
-    topicCards: number;
-    sceneCards: number;
-    scenePrompts: number;
-    sceneDrafts: number;
+  draft: {
+    wordCount: number;
+    genre: string;
+    tags: string[];
+    marketSummary: string;
+    qualitySummary: string;
   };
-  sampleClues: string[];
   nextStep?: string;
 };
 
@@ -420,144 +358,6 @@ export type WorkflowSmokeResult = {
 
 export function testWritingWorkflow() {
   return postJson<WorkflowSmokeResult>("/api/settings/test-workflow", {});
-}
-
-export function getWritingMemories() {
-  return getJson<WritingMemory[]>("/api/memory");
-}
-
-export function createWritingMemory(input: {
-  sourceType?: WritingMemory["sourceType"];
-  genre?: string;
-  rule: string;
-  positiveExample?: string;
-  negativeExample?: string;
-  confidence?: number;
-  relatedWorkIds?: string[];
-  enabled?: boolean;
-}) {
-  return postJson<WritingMemory & { persisted: boolean; message: string }>("/api/memory", input);
-}
-
-export function updateWritingMemory(
-  id: string,
-  input: Partial<Pick<WritingMemory, "rule" | "positiveExample" | "negativeExample" | "confidence" | "enabled">> & { genre?: string }
-) {
-  return patchJson<WritingMemory & { persisted: boolean; message: string } | { id: string; persisted: boolean; message: string }>(`/api/memory/${id}`, input);
-}
-
-export function deleteWritingMemory(id: string) {
-  return deleteJson<{ id: string; deleted: boolean; persisted: boolean; message: string }>(`/api/memory/${encodeURIComponent(id)}`);
-}
-
-export function getPersonalStrategies() {
-  return getJson<PersonalStrategy[]>("/api/strategies");
-}
-
-export function createPersonalStrategy(input: {
-  sourceType?: PersonalStrategy["sourceType"];
-  genre?: string;
-  rule: string;
-  evidence?: string;
-  action?: string;
-  confidence?: number;
-  relatedWorkIds?: string[];
-  enabled?: boolean;
-}) {
-  return postJson<PersonalStrategy & { persisted: boolean; message: string }>("/api/strategies", input);
-}
-
-export function updatePersonalStrategy(
-  id: string,
-  input: Partial<Pick<PersonalStrategy, "rule" | "evidence" | "action" | "confidence" | "enabled">> & { genre?: string }
-) {
-  return patchJson<PersonalStrategy & { persisted: boolean; message: string } | { id: string; persisted: boolean; message: string }>(`/api/strategies/${id}`, input);
-}
-
-export function deletePersonalStrategy(id: string) {
-  return deleteJson<{ id: string; deleted: boolean; persisted: boolean; message: string }>(`/api/strategies/${encodeURIComponent(id)}`);
-}
-
-export function getDatasources() {
-  return getJson<DatasourceRecord[]>("/api/datasources");
-}
-
-export function createDatasource(input: {
-  name: string;
-  type: DatasourceType;
-  enabled?: boolean;
-  frequency?: string;
-  sourceDetail?: string;
-  note?: string;
-}) {
-  return postJson<{ datasource: DatasourceRecord; message: string }>("/api/datasources", input);
-}
-
-export function updateDatasource(id: string, input: Partial<Pick<DatasourceRecord, "name" | "type" | "enabled" | "frequency" | "sourceDetail" | "note">>) {
-  return patchJson<{ datasource: DatasourceRecord; message: string }>(`/api/datasources/${encodeURIComponent(id)}`, input);
-}
-
-export function getCrawlerJobs() {
-  return getJson<CrawlerJobRecord[]>("/api/crawler/jobs");
-}
-
-export function importDatasourceCsv(input: { name?: string; fileName?: string; csvText: string; fieldMappings?: Record<string, string> }) {
-  return postJson<CsvImportResult>("/api/datasources/import-csv", input);
-}
-
-export function importDatasourceText(input: { name?: string; rawText: string }) {
-  return postJson<CsvImportResult>("/api/datasources/import-text", input);
-}
-
-export function runAuthorizedDatasourceCapture(input: {
-  datasourceId?: string;
-  name?: string;
-  pageUrl?: string;
-  visibleText?: string;
-  screenshotDataUrl?: string;
-  screenshotFileName?: string;
-}) {
-  return postJson<AuthorizedCaptureResult>("/api/datasources/authorized-capture", input);
-}
-
-export function startBrowserCaptureSession(input: { datasourceId?: string; name?: string; pageUrl?: string; platform?: string }) {
-  return postJson<BrowserCaptureSessionResult>("/api/datasources/browser-capture-sessions", input);
-}
-
-export function getBrowserCaptureSession(sessionId: string) {
-  return getJson<BrowserCaptureSessionResult>(`/api/datasources/browser-capture-sessions/${encodeURIComponent(sessionId)}`);
-}
-
-export function openBrowserCaptureSession(sessionId: string) {
-  return postJson<BrowserCaptureExecutorResult>(`/api/datasources/browser-capture-sessions/${encodeURIComponent(sessionId)}/open`, {});
-}
-
-export function previewBrowserCaptureSessionVisiblePage(sessionId: string) {
-  return postJson<BrowserCaptureExecutorResult>(`/api/datasources/browser-capture-sessions/${encodeURIComponent(sessionId)}/preview-visible-page`, {});
-}
-
-export function readBrowserCaptureSessionVisiblePage(sessionId: string) {
-  return postJson<BrowserCaptureExecutorResult>(`/api/datasources/browser-capture-sessions/${encodeURIComponent(sessionId)}/read-visible-page`, {});
-}
-
-export function submitBrowserCaptureSessionVisibleText(sessionId: string, input: { visibleText: string; pageUrl?: string }) {
-  return postJson<BrowserCaptureSessionResult>(`/api/datasources/browser-capture-sessions/${encodeURIComponent(sessionId)}/visible-text`, input);
-}
-
-export function importDatasourcePublicPage(input: { name?: string; url: string }) {
-  return postJson<CsvImportResult>("/api/datasources/import-public-page", input);
-}
-
-export function importDatasourceScreenshot(input: { name?: string; fileName?: string; dataUrl: string; recognizedText?: string }) {
-  return postJson<ScreenshotImportResult>("/api/datasources/import-screenshot", input);
-}
-
-export function correctDatasourceScreenshotJob(jobId: string, input: { recognizedText: string }) {
-  return postJson<CsvImportResult>(`/api/crawler/jobs/${encodeURIComponent(jobId)}/screenshot-correction`, input);
-}
-
-export function retryDatasourceCrawlerJob(jobId: string) {
-  return postJson<CsvImportResult>(`/api/crawler/jobs/${encodeURIComponent(jobId)}/retry`, {});
 }
 
 export function exportLocalBackup() {

@@ -28,12 +28,33 @@ export type Work = {
   sourceLabel?: string;
   sourceDetail?: string;
   importedAt?: string;
+  generation?: WorkGenerationMetadata;
   readCount: number;
   subscriptionCount: number;
   revenue: number;
   completionRate: number;
   updatedAt: string;
   createdAt: string;
+};
+
+export type WorkGenerationMetadata = {
+  jobId?: string;
+  createdAt: string;
+  route: "kimi_full_text" | "legacy_deepseek" | "legacy_unknown" | "manual";
+  proseProvider: AiProviderMode;
+  proseModel?: string;
+  blueprintProvider?: AiProviderMode;
+  blueprintModel?: string;
+  providerNotice?: string;
+  targetLength?: string;
+  completedSections?: number;
+  totalSections?: number;
+  wordCount?: number;
+  continuations?: number;
+  rewrites?: number;
+  continuityChecks?: number;
+  attempts?: number;
+  checkpointFile?: string;
 };
 
 export type Trend = {
@@ -147,6 +168,93 @@ export type SceneDraft = {
 };
 
 export type AiProviderMode = "mock" | "openai" | "kimi" | "deepseek" | "fallback";
+
+export type FullDraftMode = "inspiration" | "autopilot";
+
+export type FullDraftInput = {
+  mode: FullDraftMode;
+  inspiration?: string;
+  targetPlatform?: string;
+  targetLength?: "auto" | "8000" | "15000" | "20000" | string;
+  optionalDirection?: string;
+  avoid?: string[] | string;
+  approvedOutline?: StoryOutlineResult;
+  memoryHints?: string[];
+  strategyHints?: string[];
+};
+
+export type StoryOutlineInput = FullDraftInput & {
+  previousOutlines?: StoryOutlineResult[];
+};
+
+export type StoryOutlineResult = {
+  title: string;
+  direction: string;
+  outline: string;
+  highlights: string[];
+  marketReason: string;
+  providerMode?: AiProviderMode;
+  providerNotice?: string;
+  modelName?: string;
+};
+
+export type FullDraftAiResult = {
+  title: string;
+  content: string;
+  genre: string;
+  tags: string[];
+  summary: string;
+  marketSummary: string;
+  qualitySummary: string;
+  internalPlan: string;
+  revisionNotes: string[];
+  providerMode?: AiProviderMode;
+  providerNotice?: string;
+  modelName?: string;
+};
+
+export type FullDraftResult = {
+  workId: string;
+  editorUrl: string;
+  title: string;
+  status: "completed";
+  providerMode: AiProviderMode;
+  providerNotice?: string;
+  modelName?: string;
+  marketSummary: string;
+  qualitySummary: string;
+  persisted: boolean;
+  message: string;
+};
+
+export type FullDraftJobStatus = "queued" | "running" | "completed" | "failed";
+
+export type FullDraftJobCheckpointSnapshot = {
+  canResume: boolean;
+  completedSections: number;
+  totalSections: number;
+  wordCount: number;
+  stage: "starting" | "blueprint" | "section" | "continuity" | "saving" | "failed" | "completed";
+  currentSectionTitle?: string;
+  continuations: number;
+  rewrites: number;
+  continuityChecks: number;
+  qualityLog: string[];
+  updatedAt: string;
+};
+
+export type FullDraftJobSnapshot = {
+  jobId: string;
+  status: FullDraftJobStatus;
+  progress: number;
+  progressLabel: string;
+  detail?: string;
+  createdAt: string;
+  updatedAt: string;
+  checkpoint?: FullDraftJobCheckpointSnapshot;
+  result?: FullDraftResult;
+  error?: string;
+};
 
 export type SceneDraftRevision = SceneDraft & {
   providerMode?: AiProviderMode;

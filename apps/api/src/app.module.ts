@@ -7,6 +7,8 @@ import { AiProviderService } from "./modules/ai/ai-provider.service.js";
 import { PrismaService } from "./modules/database/prisma.service.js";
 import { EditorController } from "./modules/editor/editor.controller.js";
 import { EditorService } from "./modules/editor/editor.service.js";
+import { GenerateController } from "./modules/generate/generate.controller.js";
+import { GenerateService } from "./modules/generate/generate.service.js";
 import { MemoryController } from "./modules/memory/memory.controller.js";
 import { MemoryService } from "./modules/memory/memory.service.js";
 import { KnowledgeService } from "./modules/knowledge/knowledge.service.js";
@@ -31,6 +33,7 @@ import { WritingAssetsService } from "./modules/writing-assets/writing-assets.se
     TrendsController,
     SettingsController,
     DatasourcesController,
+    GenerateController,
     BackupsController,
     EditorController,
     ReviewController,
@@ -41,6 +44,7 @@ import { WritingAssetsService } from "./modules/writing-assets/writing-assets.se
   providers: [
     AiProviderService,
     PrismaService,
+    GenerateService,
     WorksService,
     EditorService,
     MemoryService,

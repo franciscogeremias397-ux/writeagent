@@ -1,13 +1,5 @@
-import { AutoWorkspace } from "@/features/auto-workspace";
+import { redirect } from "next/navigation";
 
-export default function Page({
-  searchParams
-}: {
-  searchParams?: {
-    genre?: string;
-    platform?: string;
-    note?: string;
-  };
-}) {
-  return <AutoWorkspace initialGenre={searchParams?.genre} initialPlatform={searchParams?.platform} initialNote={searchParams?.note} />;
+export default function Page() {
+  redirect("/");
 }

@@ -10,9 +10,11 @@ const fallbackProviders: AiSettingsStatus["availableAiProviders"] = [
     id: "kimi",
     label: "Kimi",
     defaultTextModel: "kimi-k2.6",
+    defaultOutlineModel: "moonshot-v1-8k",
     defaultBaseUrl: "https://api.moonshot.ai/v1",
     apiKeyEnv: "MOONSHOT_API_KEY",
     textModelEnv: "KIMI_TEXT_MODEL",
+    outlineModelEnv: "KIMI_OUTLINE_MODEL",
     baseUrlEnv: "KIMI_BASE_URL",
     supportsVision: true
   },
@@ -43,6 +45,7 @@ export function AiSettingsPanel() {
   const [message, setMessage] = useState("正在读取本地 AI 设置。");
   const [aiProvider, setAiProvider] = useState<"openai" | "kimi" | "deepseek">("kimi");
   const [textModel, setTextModel] = useState("kimi-k2.6");
+  const [outlineModel, setOutlineModel] = useState("moonshot-v1-8k");
   const [baseUrl, setBaseUrl] = useState("https://api.moonshot.ai/v1");
   const [openAiEmbeddingModel, setOpenAiEmbeddingModel] = useState("text-embedding-3-small");
   const [apiKey, setApiKey] = useState("");
@@ -60,6 +63,7 @@ export function AiSettingsPanel() {
         const provider = normalizeProviderId(result.aiStatus.provider);
         setAiProvider(provider);
         setTextModel(result.aiStatus.model);
+        setOutlineModel(result.aiStatus.outlineModel ?? result.aiStatus.model);
         setBaseUrl(result.aiStatus.baseUrl);
         setOpenAiEmbeddingModel(result.aiStatus.embeddingModel);
         setMessage(result.aiStatus.message);
@@ -72,6 +76,10 @@ export function AiSettingsPanel() {
   const providerOptions = settings?.availableAiProviders?.length ? settings.availableAiProviders : fallbackProviders;
   const selectedProvider = providerOptions.find((provider) => provider.id === aiProvider) ?? providerOptions[0];
   const realMode = settings?.aiStatus.mode && settings.aiStatus.mode !== "mock";
+  const writingRoute =
+    settings?.aiStatus.provider === "kimi" && settings.hasApiKey
+      ? "写作路由：Kimi 负责正式正文；DeepSeek 只做市场蓝图和连续性检查。"
+      : "推荐路由：Kimi 负责正式正文；DeepSeek 只做市场蓝图和连续性检查。";
 
   function handleProviderChange(value: string) {
     const nextProvider = normalizeProviderId(value);
@@ -79,6 +87,7 @@ export function AiSettingsPanel() {
 
     setAiProvider(nextProvider);
     setTextModel(meta.defaultTextModel);
+    setOutlineModel(meta.defaultOutlineModel ?? meta.defaultTextModel);
     setBaseUrl(meta.defaultBaseUrl);
     setApiKey("");
     setConfirmClearKey(false);
@@ -102,7 +111,7 @@ export function AiSettingsPanel() {
   async function handleTestKernel() {
     setIsTestingKernel(true);
     setKernelResult(null);
-    setMessage("正在试跑写作内核，不会保存作品。");
+    setMessage("正在试跑全文生成，不会保存作品。");
 
     try {
       const result = await testAiKernel();
@@ -124,6 +133,7 @@ export function AiSettingsPanel() {
       const result = await saveAiSettings({
         aiProvider,
         textModel,
+        outlineModel: aiProvider === "kimi" ? outlineModel : undefined,
         baseUrl,
         openAiEmbeddingModel,
         apiKey: apiKey.trim() || undefined
@@ -140,6 +150,7 @@ export function AiSettingsPanel() {
           : current
       );
       setTextModel(result.aiStatus.model);
+      setOutlineModel(result.aiStatus.outlineModel ?? result.aiStatus.model);
       setBaseUrl(result.aiStatus.baseUrl);
       setApiKey("");
       setMessage(result.message);
@@ -164,6 +175,7 @@ export function AiSettingsPanel() {
       const result = await saveAiSettings({
         aiProvider,
         textModel,
+        outlineModel: aiProvider === "kimi" ? outlineModel : undefined,
         baseUrl,
         openAiEmbeddingModel,
         clearApiKey: true
@@ -199,10 +211,12 @@ export function AiSettingsPanel() {
             <span className="font-medium">{realMode ? `${settings?.aiStatus.providerLabel ?? selectedProvider.label} 真实模式` : "本地模拟模式"}</span>
           </div>
           <p className="text-sm leading-6 text-muted">{message}</p>
+          <p className="text-xs leading-5 text-muted">{writingRoute}</p>
         </div>
         <div className="grid gap-3 rounded-md border border-line bg-white p-4 md:grid-cols-4">
           <Info label="供应商" value={settings?.aiStatus.providerLabel ?? selectedProvider.label} />
-          <Info label="写作模型" value={settings?.aiStatus.model ?? selectedProvider.defaultTextModel} />
+          <Info label={aiProvider === "kimi" ? "正文模型" : "写作模型"} value={settings?.aiStatus.model ?? selectedProvider.defaultTextModel} />
+          {aiProvider === "kimi" ? <Info label="方案模型" value={settings?.aiStatus.outlineModel ?? outlineModel} /> : null}
           <Info label="Key 名称" value={settings?.aiStatus.apiKeyEnv ?? selectedProvider.apiKeyEnv} />
           <Info label="API Key" value={settings?.hasApiKey ? "已配置" : "未配置"} />
         </div>
@@ -218,9 +232,18 @@ export function AiSettingsPanel() {
             </SelectInput>
           </div>
           <div className="grid gap-3 md:grid-cols-[160px_1fr]">
-            <FieldLabel>写作模型</FieldLabel>
+            <FieldLabel>{aiProvider === "kimi" ? "正文模型" : "写作模型"}</FieldLabel>
             <TextInput value={textModel} onChange={(event) => setTextModel(event.target.value)} placeholder={selectedProvider.defaultTextModel} />
           </div>
+          {aiProvider === "kimi" ? (
+            <div className="grid gap-3 md:grid-cols-[160px_1fr]">
+              <FieldLabel>方案模型</FieldLabel>
+              <div className="grid gap-2">
+                <TextInput value={outlineModel} onChange={(event) => setOutlineModel(event.target.value)} placeholder={selectedProvider.defaultOutlineModel ?? "moonshot-v1-8k"} />
+                <p className="text-xs leading-5 text-muted">用于生成标题和 500 字以内故事方案；正文仍由写作模型负责。</p>
+              </div>
+            </div>
+          ) : null}
           <div className="grid gap-3 md:grid-cols-[160px_1fr]">
             <FieldLabel>API Key</FieldLabel>
             <div className="grid gap-2">
@@ -265,7 +288,7 @@ export function AiSettingsPanel() {
           </Button>
           <Button onClick={handleTestKernel} disabled={isTestingKernel}>
             <Sparkles size={16} />
-            {isTestingKernel ? "试跑中..." : "测试写作内核"}
+            {isTestingKernel ? "试跑中..." : "测试全文生成"}
           </Button>
           <GhostButton onClick={handleClearKey} disabled={isClearingKey}>
             {confirmClearKey ? <Trash2 size={16} /> : <KeyRound size={16} />}
@@ -275,17 +298,18 @@ export function AiSettingsPanel() {
         {kernelResult ? (
           <div className="grid gap-3 rounded-md border border-line bg-paper p-4 text-sm leading-6">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="font-medium text-ink">写作内核测试结果</p>
+              <p className="font-medium text-ink">全文生成测试结果</p>
               <span className="rounded-md border border-line bg-white px-2 py-1 text-xs text-muted">{providerModeLabel(kernelResult.providerMode)}</span>
             </div>
             <p className="text-muted">{kernelResult.detail}</p>
             <div className="grid gap-2 md:grid-cols-4">
               <Info label="测试标题" value={kernelResult.title} />
-              <Info label="选题卡" value={`${kernelResult.counts.topicCards} 张`} />
-              <Info label="场景卡" value={`${kernelResult.counts.sceneCards} 张`} />
-              <Info label="分场正文" value={`${kernelResult.counts.sceneDrafts} 段`} />
+              <Info label="字数" value={`${kernelResult.draft.wordCount.toLocaleString("zh-CN")} 字`} />
+              <Info label="方向" value={kernelResult.draft.genre} />
+              <Info label="标签" value={kernelResult.draft.tags.join("、") || "无"} />
             </div>
-            {kernelResult.sampleClues.length ? <p className="text-xs text-muted">样例线索：{kernelResult.sampleClues.join("、")}</p> : null}
+            {kernelResult.draft.marketSummary ? <p className="text-xs leading-5 text-muted">市场判断：{kernelResult.draft.marketSummary}</p> : null}
+            {kernelResult.draft.qualitySummary ? <p className="text-xs leading-5 text-muted">自检摘要：{kernelResult.draft.qualitySummary}</p> : null}
             {kernelResult.providerNotice ? <p className="text-xs text-muted">{kernelResult.providerNotice}</p> : null}
             {kernelResult.nextStep ? <p className="text-xs text-muted">下一步：{kernelResult.nextStep}</p> : null}
           </div>

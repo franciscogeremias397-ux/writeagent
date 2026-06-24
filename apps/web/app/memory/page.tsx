@@ -1,5 +1,5 @@
-import { MemoryPage } from "@/features/static-pages";
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <MemoryPage />;
+  redirect("/settings");
 }
