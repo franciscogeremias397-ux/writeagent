@@ -1,6 +1,6 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import type {
   FullDraftAiResult,
@@ -322,8 +322,17 @@ export class GenerateService {
       runtime
     };
 
+    const tempFilePath = `${filePath}.${randomUUID()}.tmp`;
+
     await mkdir(dirname(filePath), { recursive: true });
-    await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+
+    try {
+      await writeFile(tempFilePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+      await rename(tempFilePath, filePath);
+    } catch (error) {
+      await rm(tempFilePath, { force: true }).catch(() => undefined);
+      throw error;
+    }
   }
 
   private async restoreJobState(jobId: string): Promise<FullDraftJobSnapshot | undefined> {

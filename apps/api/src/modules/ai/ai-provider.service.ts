@@ -314,6 +314,9 @@ const GENERIC_OUTLINE_PATTERNS = [
   /以其人之道/u
 ];
 
+const CONCRETE_STORY_MATERIAL_PATTERN =
+  /病历|账单|录音|门禁|合同|旧手机|聊天|截图|遗嘱|监控|钥匙|发票|缴费单|快递|照片|录取|诊断|转账|保单|工牌|时间差|借条|离婚协议|亲子鉴定|孕检|住院单|银行卡|名单|结婚证|报警回执|调解书|U盘|优盘|SD卡|纸条|签名|指纹|流水|账户|印章|摄像头|票据|快递单|通话记录|录音笔|门牌|收据|证明|档案|病例|判决|律师函|登记表/u;
+
 const STORY_AGENT_INSTRUCTIONS = `
 你是「神笔马良短篇小说 Agent」的写作内核。
 请为中国短篇小说平台创作者生成原创短篇方案。
@@ -433,7 +436,9 @@ const FULL_DRAFT_SECTION_INSTRUCTIONS = `
 - 多写具体动作、物件、证据、地点、对话和细节；少写抽象情绪、人生感悟和总结。
 - 对话要带目的：试探、遮掩、威胁、求证、反击或露馅。
 - 段尾必须留下继续读的动力：新问题、新证据、新威胁、新选择或情绪落点。
-- 字数目标是硬约束：宁可少写一点，也不要超长；超出时删掉解释、回忆和重复对话。
+- 字数目标是硬约束：宁可少写一点，也不要超长；超出时删掉解释、回忆、心理独白、重复对话和旁支人物。
+- 每段只围绕一个主场景推进，不能在同一段里连续展开多个新地点或新支线。
+- mustInclude 不是参考词，而是必须落成场面的材料；如果蓝图材料偏抽象，要转成可触摸、可验证、可展示给别人看的具体物件或记录。
 
 禁写：
 - 不要输出“市场判断”“自检摘要”“以下是正文”等非小说内容。
@@ -466,6 +471,8 @@ const FULL_DRAFT_SECTION_REWRITE_INSTRUCTIONS = `
 - 不换故事，不换主角，不推翻已经完成的前文。
 - 必须修复反馈里的连续性、短字数、重复、非小说内容或节奏问题。
 - 保持上一段结尾之后的自然承接。
+- 如果反馈要求压缩，必须重写为更短版本，不要在原文基础上补写。
+- 压缩优先级：保留证据、动作、对抗、反转和段尾钩子；删除背景说明、心理解释、重复争吵、过场动作和无新信息对话。
 `;
 
 const FULL_DRAFT_CONTINUITY_CHECK_INSTRUCTIONS = `
@@ -986,39 +993,24 @@ ${input.feedback ?? ""}
       });
       let result = await this.createFullDraftSection(normalizedInput, blueprint, activeSection, previousText, storyState, proseProvider);
       result = await this.ensureFullDraftSectionLength(normalizedInput, blueprint, activeSection, previousText, storyState, result, proseProvider, metrics);
+      result = await this.refineFullDraftSectionQuality(
+        normalizedInput,
+        blueprint,
+        activeSection,
+        previousText,
+        storyState,
+        result,
+        proseProvider,
+        metrics
+      );
       const qualityIssues = this.fullDraftSectionQualityIssues(result, activeSection, previousText, blueprint.sections.length);
-      const retryableIssues = this.retryableFullDraftSectionIssues(qualityIssues);
 
-      if (retryableIssues.length) {
-        const retryFeedback = retryableIssues.map((issue) => `- ${issue}`).join("\n");
-        this.recordFullDraftRewrite(metrics, `第 ${activeSection.index} 段触发 Kimi 重写：${retryableIssues.join("；")}`);
-
-        result = await this.rewriteFullDraftSectionWithFeedback(
-          normalizedInput,
-          blueprint,
-          activeSection,
-          previousText,
-          storyState,
-          result,
-          proseProvider,
-          retryFeedback
-        );
-        result = await this.ensureFullDraftSectionLength(normalizedInput, blueprint, activeSection, previousText, storyState, result, proseProvider, metrics);
-        const remainingIssues = this.fullDraftSectionQualityIssues(result, activeSection, previousText, blueprint.sections.length);
-
-        if (remainingIssues.length) {
-          result = {
-            ...result,
-            revisionNote: `${result.revisionNote} 质量闸门提醒：${remainingIssues.join("；")}`
-          };
-          this.recordFullDraftQualityLog(metrics, `第 ${activeSection.index} 段重写后仍有提醒：${remainingIssues.join("；")}`);
-        }
-      } else if (qualityIssues.length) {
+      if (qualityIssues.length) {
         result = {
           ...result,
           revisionNote: `${result.revisionNote} 质量闸门提醒：${qualityIssues.join("；")}`
         };
-        this.recordFullDraftQualityLog(metrics, `第 ${activeSection.index} 段质量提醒：${qualityIssues.join("；")}`);
+        this.recordFullDraftQualityLog(metrics, `第 ${activeSection.index} 段最终仍有提醒：${qualityIssues.join("；")}`);
       }
 
       await this.emitFullDraftProgress(options, {
@@ -1194,8 +1186,8 @@ ${JSON.stringify(input.approvedOutline ?? null, null, 2)}
     provider: ProviderConfig,
     qualityFeedback?: string
   ): Promise<FullDraftSectionResult> {
-    const minimumWordTarget = Math.max(500, Math.round(section.wordTarget * 0.82));
-    const maximumWordTarget = Math.max(800, Math.round(section.wordTarget * 1.15));
+    const minimumWordTarget = this.minimumReadableTextForSection(section);
+    const maximumWordTarget = this.maximumReadableTextForSection(section);
     const prompt = `${FULL_DRAFT_SECTION_INSTRUCTIONS}
 
 提示词版本：${WRITING_PROMPT_VERSION}
@@ -1256,12 +1248,14 @@ ${JSON.stringify(
 
 要求：
 - text 只写当前分段正文，目标约 ${section.wordTarget} 字，建议范围 ${minimumWordTarget}-${maximumWordTarget} 字；超过 ${maximumWordTarget} 字就是失败。
+- 当前分段只写一个主场景，最多 6-10 个自然段；每个自然段都必须有新动作、新证据、新对抗或新信息。
 - 写到目标字数附近必须停，不要为了补解释、补心理活动或补背景而继续扩写。
-- 为了控长，优先保留动作、证据、对抗和转折，删掉解释、回忆、抒情和重复信息。
+- 为了控长，优先保留动作、证据、对抗和转折，删掉解释、回忆、抒情、重复信息和无新信息对话。
 - 当前段不能复述蓝图，不能输出段落标题。
 - 如果是第 1 段，前 300 字内必须有强异常、强冲突、强代价或强悬念。
 - 如果是最后一段，必须回收核心冲突并给出情绪落点。
 - 必须使用 mustInclude 中的具体材料，至少出现 2 项。
+- mustInclude 要以读者能看见的物件、记录、动作或对话出现，不能只用一句旁白概括。
 - 必须回应 readerQuestion，并在段尾制造新的继续阅读理由。
 - 必须让 conflictUpgrade 和 informationReveal 以场面形式发生，不能只用旁白总结。
 - 不能重复上一段结尾的句子。
@@ -1410,11 +1404,12 @@ ${JSON.stringify(
 )}
 
 要求：
-- 目标约 ${section.wordTarget} 字。
+- 目标约 ${section.wordTarget} 字，合格范围 ${this.minimumReadableTextForSection(section)}-${this.maximumReadableTextForSection(section)} 字。
 - 修复反馈中的问题，同时保留当前分段该推进的情节职责。
 - 不要重复上一段结尾，不要输出标题或说明。
 - 必须遵守 storyState：已发生事件不能重写，已揭露信息不能当成新发现，未回收伏笔要推进或回收。
 - 如果反馈说过长，必须压缩到目标附近，只保留动作、证据、对抗和转折。
+- mustInclude 必须以具体可见材料落地；如果反馈指出材料不足，至少写出两个可展示给别人看的证据/物件/记录/动作。
 
 请直接输出重写后的小说正文纯文本。`;
 
@@ -1917,11 +1912,11 @@ ${JSON.stringify(
     const target = this.targetLengthNumber(input);
     const remainingSections = Math.max(1, totalSections - completedSections);
     const remainingTarget = Math.max(900, target - currentWordCount);
-    const dynamicTarget = Math.round((remainingTarget / remainingSections) * 0.78);
+    const dynamicTarget = Math.round((remainingTarget / remainingSections) * 0.7);
 
     return {
       ...section,
-      wordTarget: Math.max(700, Math.min(section.wordTarget, dynamicTarget))
+      wordTarget: Math.max(620, Math.min(section.wordTarget, dynamicTarget))
     };
   }
 
@@ -1932,6 +1927,67 @@ ${JSON.stringify(
   private recordFullDraftRewrite(metrics: FullDraftGenerationMetrics, message: string) {
     metrics.rewrites += 1;
     this.recordFullDraftQualityLog(metrics, message);
+  }
+
+  private async refineFullDraftSectionQuality(
+    input: FullDraftInput,
+    blueprint: FullDraftBlueprint,
+    section: FullDraftBlueprintSection,
+    previousText: string,
+    storyState: FullDraftStoryState,
+    result: FullDraftSectionResult,
+    provider: ProviderConfig,
+    metrics: FullDraftGenerationMetrics
+  ) {
+    let nextResult = result;
+    const maxAttempts = 3;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const issues = this.fullDraftSectionQualityIssues(nextResult, section, previousText, blueprint.sections.length);
+      const retryableIssues = this.retryableFullDraftSectionIssues(issues);
+
+      if (!retryableIssues.length) {
+        return nextResult;
+      }
+
+      const feedback = this.fullDraftRewriteFeedback(section, nextResult, retryableIssues, attempt);
+      this.recordFullDraftRewrite(metrics, `第 ${section.index} 段第 ${attempt + 1} 次 Kimi 重写：${retryableIssues.join("；")}`);
+
+      nextResult = await this.rewriteFullDraftSectionWithFeedback(
+        input,
+        blueprint,
+        section,
+        previousText,
+        storyState,
+        nextResult,
+        provider,
+        feedback
+      );
+      nextResult = await this.ensureFullDraftSectionLength(input, blueprint, section, previousText, storyState, nextResult, provider, metrics);
+    }
+
+    return nextResult;
+  }
+
+  private fullDraftRewriteFeedback(
+    section: FullDraftBlueprintSection,
+    result: FullDraftSectionResult,
+    issues: string[],
+    attempt: number
+  ) {
+    const readableCount = this.countReadableText(result.text);
+    const minimumCount = this.minimumReadableTextForSection(section);
+    const maximumCount = this.maximumReadableTextForSection(section);
+    const strictMaximum = Math.max(minimumCount + 120, Math.round(maximumCount * (attempt >= 1 ? 0.94 : 1)));
+    const mustInclude = section.mustInclude.length ? section.mustInclude.join("、") : "蓝图里的具体证据、物件和行动";
+
+    return [
+      `当前约 ${readableCount} 字，合格范围 ${minimumCount}-${strictMaximum} 字。`,
+      `必须重写为更紧的版本，不能超过 ${strictMaximum} 字；如果已经超长，删掉解释、回忆、心理独白、重复争吵和无新信息过场。`,
+      `必须把这些材料写成可见场面：${mustInclude}。`,
+      `段尾必须兑现或推进 endingHook：「${section.endingHook}」。`,
+      ...issues.map((issue) => `- ${issue}`)
+    ].join("\n");
   }
 
   private async ensureFullDraftSectionLength(
@@ -2279,7 +2335,7 @@ ${result.text}
     const text = section.text.trim();
     const readableCount = this.countReadableText(text);
     const minimumCount = this.minimumReadableTextForSection(blueprintSection);
-    const maximumCount = Math.max(800, Math.round(blueprintSection.wordTarget * 1.15));
+    const maximumCount = this.maximumReadableTextForSection(blueprintSection);
     const firstPart = text.slice(0, 320);
     const previousEnding = previousText.trim().slice(-80);
     const listLineCount = text.split("\n").filter((line) => /^\s*(?:[-*]|\d+[.、)）])\s+/u.test(line)).length;
@@ -2329,7 +2385,19 @@ ${result.text}
       issues.push("结尾没有形成完整情绪落点，最后一段必须完整收束。");
     }
 
+    if (blueprintSection.index === totalSections && !this.hasConcreteResolution(text)) {
+      issues.push("最后一段缺少具体反制或代价回收，必须写出证据如何生效、对手付出什么代价、主角拿回什么。");
+    }
+
     return issues.slice(0, 6);
+  }
+
+  private hasConcreteResolution(text: string) {
+    const resolutionSignals =
+      /报警|警察|派出所|法院|法庭|起诉|律师|调解|撤销|冻结|查封|带走|拘留|判决|赔偿|还清|追回|归还|公开|举报|录音|证据|U盘|优盘|SD卡|遗嘱|合同|流水|转账|账户|签名|指纹|监控|承认|道歉|真相|名单|回执|材料/u;
+    const actionSignals = /交给|递给|发给|提交|按下|打开|播放|调出|拿出|举起|签下|摁住|拦住|锁定|带走|撤回|退回|转入|归还|赔/u;
+
+    return resolutionSignals.test(text) && actionSignals.test(text);
   }
 
   private hasRepeatedNarrativeBeat(text: string) {
@@ -2387,16 +2455,21 @@ ${result.text}
   }
 
   private retryableFullDraftSectionIssues(issues: string[]) {
-    return issues.filter((issue) => /正文过短|正文过长|非小说正文|列表化表达|AI 套话|开头太慢|重复了上一段|具体物件|具体材料/u.test(issue));
+    return issues.filter((issue) => /正文过短|正文过长|非小说正文|列表化表达|AI 套话|开头太慢|重复了上一段|具体物件|具体材料|段尾收束|完整情绪|具体反制|代价回收/u.test(issue));
   }
 
   private missingConcreteBlueprintMaterial(text: string, mustInclude: string[]) {
     const concreteWords = this.normalizeStringList(mustInclude)
       .flatMap((item) => item.split(/[，,、\s]/u))
       .map((item) => item.replace(/[“”"‘’'：:；;。！？!?（）()]/gu, "").trim())
-      .filter((item) => item.length >= 2 && item.length <= 12);
+      .filter((item) => item.length >= 2 && item.length <= 12 && !/^(一个|一次|一句|具体|材料|动作|物件|证据|对话|场面|信息|冲突|关键|核心)$/u.test(item));
     const uniqueWords = Array.from(new Set(concreteWords));
     const hitCount = uniqueWords.filter((word) => text.includes(word)).length;
+    const materialHits = new Set(text.match(new RegExp(CONCRETE_STORY_MATERIAL_PATTERN.source, "gu")) ?? []);
+
+    if (hitCount >= 2 || materialHits.size >= 2) {
+      return false;
+    }
 
     return uniqueWords.length >= 2 && hitCount === 0;
   }
@@ -2631,15 +2704,19 @@ ${result.text}
   }
 
   private maxTokensForSection(wordTarget: number) {
-    return Math.min(3600, Math.max(1500, Math.round(wordTarget * 1.15 + 420)));
+    return Math.min(3000, Math.max(1000, Math.round(wordTarget * 0.86 + 260)));
   }
 
   private maxTokensForContinuation(wordTarget: number) {
-    return Math.min(2600, Math.max(900, Math.round(wordTarget * 1.45 + 300)));
+    return Math.min(2200, Math.max(700, Math.round(wordTarget * 1.05 + 220)));
   }
 
   private minimumReadableTextForSection(section: FullDraftBlueprintSection) {
-    return Math.max(650, Math.min(2200, Math.round(section.wordTarget * 0.72)));
+    return Math.max(520, Math.min(1900, Math.round(section.wordTarget * 0.68)));
+  }
+
+  private maximumReadableTextForSection(section: FullDraftBlueprintSection) {
+    return Math.max(760, Math.min(2200, Math.round(section.wordTarget * 1.08)));
   }
 
   private timeoutMsForSection(wordTarget: number, provider: ProviderConfig) {
